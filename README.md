@@ -2,7 +2,7 @@
 
 A lightweight Foundry VTT module for the Nimble system that provides an on-screen HP control panel for fast adjustments, plus optional GM-routed damage/healing so players can apply changes to NPCs they target (with GM control).
 
-What it does
+#What it does
 
 Adds an on-screen HP control panel for quick damage/healing entry and application.
 
@@ -10,19 +10,13 @@ Optionally allows players to apply damage/healing to targeted NPCs by routing th
 
 Supports pulling roll totals from chat and applying them to targets (including condition-style buttons from the same chat card, when present).
 
-Requirements
+#Requirements
 
 Foundry VTT v13
 
 SocketLib: optional (used if installed; otherwise core sockets are used)
 
-Installation (GitHub Manifest)
-
-Copy the module manifest URL (raw module.json) from the GitHub repo.
-
-In Foundry: Add-on Modules → Install Module → paste the manifest URL.
-
-Quick start
+#Quick start
 
 Enable the module in your world.
 
@@ -34,12 +28,12 @@ Control your own token for normal HP adjustments.
 
 To apply damage/healing to an NPC/monster: target the token (bullseye) and use the panel to apply damage/healing.
 
-Permissions and safety
+#Permissions and safety
 
 Player → NPC damage/healing is controlled by the module setting: “Allow players to apply damage directly”.
 
 The panel displays HP for controlled tokens; targeting an NPC does not display the NPC’s HP.
 
-Notes
+#Notes
 
 HP data paths are Nimble-specific and not configurable in this build.
