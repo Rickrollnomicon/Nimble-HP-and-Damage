@@ -1,42 +1,45 @@
-# Nimble-HP-and-Damage
+📦 Nimble HP and Damage
 
-A streamlined HP and damage control module for the Nimble system in Foundry VTT.
+A streamlined HP and damage control module for the Nimble system in Foundry VTT (v13).
 
-Designed for fast in-play adjustments, this module provides an on-screen HP control panel and optional GM-routed damage handling for targeted NPCs.
+This module provides a clean, fast in-play HP control panel and optional GM-routed damage handling for targeted NPCs.
 
-##Features
+Designed for speed, clarity, and minimal friction at the table.
+
+✨ Features
 
 Floating HP control panel for quick damage and healing.
 
-Apply damage/healing to controlled tokens.
+Apply HP changes to controlled tokens.
 
-Optional GM-routed damage application to targeted NPCs.
+Optional GM-routed damage application for targeted NPCs.
 
 Pull roll totals directly from chat.
 
 Designed specifically for the Nimble system.
 
-Clean, minimal interface consistent with Nimble styling.
+Clean interface consistent with Nimble styling.
 
-##Requirements
+🧩 Requirements
 
 Foundry VTT v13
 
 Nimble system
 
-SocketLib (optional; used automatically if present)
+SocketLib (optional — used automatically if installed)
 
-##Installation
+🔧 Installation (GitHub Manifest)
 
-Install via GitHub manifest:
+In Foundry, go to
+Add-on Modules → Install Module
+
+Paste this Manifest URL:
 
 https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/module.json
 
-Paste this URL into:
+Click Install.
 
-Add-on Modules → Install Module → Manifest URL
-
-##Usage
+🚀 Usage
 
 Enable the module in your world.
 
@@ -50,13 +53,18 @@ Use the panel to apply damage or healing.
 
 If GM routing is enabled, the request will be processed by an active GM.
 
-##Settings
+⚙ Settings
+
+The module includes configurable settings inside Foundry:
 
 Allow players to apply damage directly to NPCs.
 
-Additional behavior is controlled through Foundry’s standard module settings.
+GM routing behavior toggle.
 
-##License
+🛠 Version
+
+Current canonical release: v2.2.43
+
+📄 License
 
 MIT License.
-
