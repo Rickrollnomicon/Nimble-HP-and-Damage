@@ -1,39 +1,62 @@
 # Nimble-HP-and-Damage
 
-A lightweight Foundry VTT module for the Nimble system that provides an on-screen HP control panel for fast adjustments, plus optional GM-routed damage/healing so players can apply changes to NPCs they target (with GM control).
+A streamlined HP and damage control module for the Nimble system in Foundry VTT.
 
-What it does:
+Designed for fast in-play adjustments, this module provides an on-screen HP control panel and optional GM-routed damage handling for targeted NPCs.
 
-Adds an on-screen HP control panel for quick damage/healing entry and application.
+##Features
 
-Optionally allows players to apply damage/healing to targeted NPCs by routing the request to an active GM.
+Floating HP control panel for quick damage and healing.
 
-Supports pulling roll totals from chat and applying them to targets (including condition-style buttons from the same chat card, when present).
+Apply damage/healing to controlled tokens.
 
-Requirements"
+Optional GM-routed damage application to targeted NPCs.
+
+Pull roll totals directly from chat.
+
+Designed specifically for the Nimble system.
+
+Clean, minimal interface consistent with Nimble styling.
+
+##Requirements
 
 Foundry VTT v13
 
-SocketLib: optional (used if installed; otherwise core sockets are used)
+Nimble system
 
-Quick start:
+SocketLib (optional; used automatically if present)
+
+##Installation
+
+Install via GitHub manifest:
+
+https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/module.json
+
+Paste this URL into:
+
+Add-on Modules → Install Module → Manifest URL
+
+##Usage
 
 Enable the module in your world.
 
-As GM- log in normally (no additional startup steps).
+Use the on-screen HP panel to apply damage or healing.
 
-As player-
+To apply changes to an NPC:
 
-Control your own token for normal HP adjustments.
+Target the token.
 
-To apply damage/healing to an NPC/monster: target the token (bullseye) and use the panel to apply damage/healing.
+Use the panel to apply damage or healing.
 
-#Permissions and safety
+If GM routing is enabled, the request will be processed by an active GM.
 
-Player → NPC damage/healing is controlled by the module setting: “Allow players to apply damage directly”.
+##Settings
 
-The panel displays HP for controlled tokens; targeting an NPC does not display the NPC’s HP.
+Allow players to apply damage directly to NPCs.
 
-Notes:
+Additional behavior is controlled through Foundry’s standard module settings.
 
-HP data paths are Nimble-specific and not configurable in this build.
+##License
+
+MIT License.
+
