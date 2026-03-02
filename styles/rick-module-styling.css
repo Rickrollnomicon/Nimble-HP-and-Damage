@@ -1,0 +1,295 @@
+/* =========================================================
+   Rick Module Styling (RMS) v1.0
+   Canonical, system-agnostic "frosted dark" UI contract.
+
+   Philosophy:
+   - Defaults are locked here (edit only when intentionally versioning RMS).
+   - Modules can either:
+       A) add rms-* classes to their markup, OR
+       B) use a thin adapter stylesheet that maps existing selectors to RMS.
+
+   Includes:
+   - Window/panel surface
+   - Typography defaults
+   - Controls (buttons/inputs/selects) — NO fixed sizes
+   - Spacing between border and internal elements
+   - Chat cards (.rms-chat-card) + safe delete icon rendering
+========================================================= */
+
+:root {
+  /* --- Surface --- */
+  --rms-surface-bg: rgba(24, 26, 36, 0.82);
+  --rms-surface-border-color: rgba(231, 209, 177, 0.35);
+  --rms-surface-border-width: 1px;
+  --rms-surface-radius: 12px;
+  --rms-surface-padding-y: 8px;
+  --rms-surface-padding-x: 10px;
+  --rms-surface-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  --rms-backdrop-blur: 6px;
+
+  /* --- Typography --- */
+  --rms-font-family: "Roboto Condensed", "Signika", system-ui, -apple-system, sans-serif;
+  --rms-font-size: 13px;
+  --rms-text-color: rgba(231, 209, 177, 0.92);
+  --rms-text-muted: rgba(231, 209, 177, 0.72);
+
+  /* --- Controls --- */
+  --rms-control-bg: rgba(0, 0, 0, 0.25);
+  --rms-control-bg-hover: rgba(0, 0, 0, 0.32);
+  --rms-control-border-color: rgba(231, 209, 177, 0.55);
+  --rms-control-border-width: 1px;
+  --rms-control-radius: 9px;
+
+  /* Hover/Focus accent (matches your current HUDs) */
+  --rms-accent: #ff4d4d;
+  --rms-accent-outline: 2px;
+  --rms-accent-glow: 0 0 10px rgba(255, 77, 77, 0.20);
+  --rms-accent-glow-strong: 0 0 10px rgba(255, 77, 77, 0.35);
+
+  /* --- Chat message shell for RMS cards --- */
+  --rms-chat-shell-bg: rgba(24, 26, 36, 0.82);
+  --rms-chat-shell-border: rgba(231, 209, 177, 0.35);
+  --rms-chat-shell-radius: 12px;
+  --rms-chat-shell-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+  --rms-chat-shell-padding-y: 10px;
+  --rms-chat-shell-padding-x: 12px;
+
+  /* --- Chat card internals --- */
+  --rms-chat-title-size: 17px;
+  --rms-chat-body-size: 17px;
+  --rms-chat-body-lineheight: 1.25;
+}
+
+/* =========================
+   RMS CLASSES (optional)
+   Add these classes to your own markup.
+========================= */
+
+.rms-surface {
+  background: var(--rms-surface-bg);
+  color: var(--rms-text-color);
+  border: var(--rms-surface-border-width) solid var(--rms-surface-border-color);
+  border-radius: var(--rms-surface-radius);
+  padding: var(--rms-surface-padding-y) var(--rms-surface-padding-x);
+  box-shadow: var(--rms-surface-shadow);
+  box-sizing: border-box;
+  backdrop-filter: blur(var(--rms-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--rms-backdrop-blur));
+}
+
+.rms-typography {
+  font-family: var(--rms-font-family);
+  font-size: var(--rms-font-size);
+  color: var(--rms-text-color);
+}
+
+.rms-muted { color: var(--rms-text-muted); }
+
+/* Controls — no sizes */
+.rms-control {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--rms-control-bg);
+  border: var(--rms-control-border-width) solid var(--rms-control-border-color);
+  border-radius: var(--rms-control-radius);
+  color: var(--rms-text-color);
+  font-family: inherit;
+  font-size: inherit;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+button.rms-control { cursor: pointer; }
+
+button.rms-control:hover,
+select.rms-control:hover {
+  background: var(--rms-control-bg-hover);
+  outline: var(--rms-accent-outline) solid var(--rms-accent);
+  outline-offset: 1px;
+  box-shadow: var(--rms-accent-glow);
+  border-color: rgba(255, 77, 77, 0.85);
+}
+
+input.rms-control:focus,
+select.rms-control:focus,
+textarea.rms-control:focus {
+  outline: var(--rms-accent-outline) solid var(--rms-accent);
+  outline-offset: 1px;
+  box-shadow: var(--rms-accent-glow);
+  border-color: rgba(255, 77, 77, 0.85);
+}
+
+/* Select arrow (optional; looks consistent on dark surfaces) */
+select.rms-control {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--rms-text-muted) 50%),
+    linear-gradient(135deg, var(--rms-text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 24px;
+}
+
+/* =========================
+   RMS CHAT CARD
+   Your canonical chat-card presentation.
+   NOTE: We avoid setting font-family on * (icon-safe).
+========================= */
+
+li.chat-message:has(.rms-chat-card) {
+  background: var(--rms-chat-shell-bg) !important;
+  border: 1px solid var(--rms-chat-shell-border) !important;
+  border-radius: var(--rms-chat-shell-radius) !important;
+  box-shadow: var(--rms-chat-shell-shadow) !important;
+  padding: var(--rms-chat-shell-padding-y) var(--rms-chat-shell-padding-x) !important;
+  backdrop-filter: blur(var(--rms-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--rms-backdrop-blur));
+}
+
+li.chat-message:has(.rms-chat-card) .message-header {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 0 6px 0 !important;
+}
+
+/* Header colors (safe) */
+li.chat-message:has(.rms-chat-card) .message-header {
+  color: var(--rms-text-color) !important;
+}
+
+/* Typography only on known header text fields */
+li.chat-message:has(.rms-chat-card) .message-header .message-sender,
+li.chat-message:has(.rms-chat-card) .message-header .message-metadata,
+li.chat-message:has(.rms-chat-card) .message-header .message-timestamp,
+li.chat-message:has(.rms-chat-card) .message-header .whisper-to,
+li.chat-message:has(.rms-chat-card) .message-header .flavor-text {
+  font-family: var(--rms-font-family) !important;
+  font-size: var(--rms-font-size) !important;
+  color: var(--rms-text-color) !important;
+}
+
+li.chat-message:has(.rms-chat-card) .message-content {
+  padding: 0 !important;
+}
+
+.rms-chat-card {
+  font-family: var(--rms-font-family);
+  color: var(--rms-text-color);
+}
+
+/* =========================
+   RMS "Damage Applied" card layout
+   (Used by Nimble HP and Damage Targeted HUD actions)
+========================= */
+
+.rms-chat-card.rms-apply-damage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rms-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rms-chat-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(231, 209, 177, 0.35);
+  border-radius: 10px;
+}
+
+.rms-chat-icon i {
+  font-size: 16px;
+  color: rgba(231, 209, 177, 0.92);
+}
+
+.rms-chat-headings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rms-chat-title {
+  font-weight: 850;
+  letter-spacing: 0.2px;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.rms-chat-subtitle {
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 1.1;
+  color: var(--rms-text-muted);
+}
+
+.rms-chat-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(231, 209, 177, 0.25);
+  border-radius: 12px;
+}
+
+.rms-chat-label {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--rms-text-muted);
+  white-space: nowrap;
+}
+
+.rms-chat-value {
+  font-weight: 750;
+  font-size: 14px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.rms-chat-applied {
+  justify-content: flex-start;
+}
+
+.rms-chat-badge {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(231, 209, 177, 0.35);
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 18px;
+}
+
+
+
+/* Delete button (icon-safe) */
+.rms-delete {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  color: var(--rms-text-muted);
+  cursor: pointer;
+}
+
+.rms-delete:hover {
+  color: var(--rms-text-color);
+}
