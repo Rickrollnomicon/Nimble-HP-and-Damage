@@ -3138,7 +3138,6 @@ try {
 
     try {
       await this._applyDeadDyingStatusForActor(actor, { isPC, preDying, delta });
-      await this._applyBloodiedStatusForActor(actor);
     } catch (e) {
       console.error("[nimble-hp-and-damage] dead/dying status error:", e);
     }
@@ -3187,25 +3186,6 @@ try {
       }
     } catch (err) {
       console.error("[nimble-hp-and-damage] _applyDeadDyingStatusForActor failed:", err);
-    }
-  }
-
-
-
-  async _applyBloodiedStatusForActor(actor) {
-    try {
-      if (!actor || !(actor instanceof Actor)) return;
-
-      // Nimble: Bloodied at 50% (or less) of max HP, removed when above 50%.
-      // Do not keep Bloodied while at 0 HP (dead/dying logic handles that state).
-      const hp = this.getResourceValue(actor, HP_VALUE_PATH);
-      const max = this.getResourceValue(actor, HP_MAX_PATH);
-      if (!max || max <= 0) return;
-
-      const shouldBeBloodied = (hp > 0) && (hp <= (max / 2));
-      await this._toggleStatusEffectBestEffort(actor, "bloodied", shouldBeBloodied);
-    } catch (err) {
-      console.error("[nimble-hp-and-damage] bloodied status error:", err);
     }
   }
 

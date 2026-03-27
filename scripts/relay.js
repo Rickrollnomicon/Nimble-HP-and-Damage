@@ -102,25 +102,6 @@ async function _applyDeadDyingStatusForActor(actor, tokenDoc) {
   }
 }
 
-
-async function _applyBloodiedStatusForActor(actor, tokenDoc) {
-  try {
-    if (!game.settings.get(MODULE_ID, "add-defeated")) return; // keep tied to same automation toggle
-    if (!actor) return;
-
-    const hp = _getResourceValue(actor, HP_VALUE_PATH);
-    const max = _getResourceValue(actor, HP_MAX_PATH);
-    if (!max || max <= 0) return;
-
-    // Nimble: Bloodied at 50% (or less) of max HP; removed when above 50%.
-    // Do not keep Bloodied while at 0 HP.
-    const shouldBeBloodied = (hp > 0) && (hp <= (max / 2));
-    await _toggleStatusEffectBestEffort(tokenDoc, actor, "bloodied", shouldBeBloodied);
-  } catch (err) {
-    console.error(`[${MODULE_ID}] bloodied status error:`, err);
-  }
-}
-
 async function _toggleStatusAsGM({ tokenUuids = [], tokenUuid, statusId, statusKey, action = "add", active, fromUserId } = {}) {
   if (!game.user.isGM) return;
 
@@ -216,7 +197,6 @@ async function _applyDamageAsGM({ tokenUuid, actorUuid, delta, target, note, whi
   if (Object.keys(updates).length) {
     await actor.update(updates);
     await _applyDeadDyingStatusForActor(actor, tDoc);
-    await _applyBloodiedStatusForActor(actor, tDoc);
   }
 
   // Optional: create a whispered chat card (used when a caller explicitly asks for it).
