@@ -1,0 +1,1240 @@
+/* Floating HP Tracker — compact, Nimble-ish styling.
+   Uses Nimble variables when present, otherwise falls back to sensible dark defaults.
+   (This is intended to visually match the Floating Resource Tracker style.) */
+
+/* Hide the Foundry window header chrome for compactness. */
+.floating-hp-tracker .window-header { display: none; }
+
+/* Frame styling — match the Resource Tracker.
+   Apply the "card" to .window-content (more reliable across Foundry/system themes than .window-app). */
+.floating-hp-tracker {
+  background: transparent;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+/* ---------------- Extra Damage dialog (HUD-style) ---------------- */
+
+/* The Extras dialog should look like the HUD (single border, compact) and remain draggable.
+   NOTE: The base HUD hides Foundry's window header; for this dialog, we re-enable it
+   so Foundry's native drag behavior works and the position can be remembered per-user. */
+
+.fhp-extras-dialog {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.fhp-extras-dialog .window-header {
+  display: none !important;
+}
+
+.fhp-extras-dialog .window-header .window-title {
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif);
+  font-weight: 750;
+  font-size: 13px;
+}
+
+.fhp-extras-dialog .window-header a,
+.fhp-extras-dialog .window-header button {
+  cursor: pointer;
+}
+
+.fhp-extras-dialog .window-content {
+  background: var(--nimble-sheet-background, rgba(18, 18, 26, 0.88));
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif);
+  padding: 8px;
+  border: 1px solid rgba(231, 209, 177, 0.35);
+  border-radius: 12px;
+  overflow: visible;
+  cursor: grab;
+}
+
+.fhp-extras-dialog .window-content:active {
+  cursor: grabbing;
+}
+
+.fhp-extras-dialog .window-content button {
+  cursor: pointer;
+}
+
+.fhp-extras-dialog .window-content input,
+.fhp-extras-dialog .window-content textarea {
+  cursor: text;
+}
+
+.fhp-extras-dialog .dialog-buttons {
+  display: none;
+}
+
+.fhp-extras-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fhp-ex-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 10px;
+  /* Keep the dialog to a SINGLE visible frame border (on .window-content).
+     Inner rows should not add a second framed border. */
+  border: 0;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.fhp-ex-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.fhp-ex-sub {
+  opacity: 0.85;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.fhp-ex-actions {
+  flex: 0 0 auto;
+}
+
+.fhp-ex-actions button { min-width: 90px; }
+
+.fhp-ex-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.fhp-ex-footer .fhp-ex-close {
+  min-width: 90px;
+}
+
+/* Roll / Re-roll button should match HUD button styling, but with flexible width. */
+.fhp-ex-roll-btn {
+  min-height: 26px;
+  border-radius: 9px;
+  background: var(--nimble-input-background-color, rgba(0,0,0,0.25));
+  border: 1px solid rgba(231,209,177,0.55);
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  font-weight: 750;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 10px;
+}
+
+.fhp-ex-roll-btn:hover {
+  outline: 2px solid #ff4d4d;
+  outline-offset: 1px;
+  box-shadow: 0 0 10px rgba(255,77,77,0.35);
+  border-color: rgba(255,77,77,0.85);
+}
+
+/* Foundry/system themes sometimes paint borders/shadows on the app shell (ApplicationV2).
+   Nuke that so our inner frame (fhp-wrap) is the *only* visible border. */
+.floating-hp-tracker.window-app,
+.floating-hp-tracker.application,
+.floating-hp-tracker.app {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.floating-hp-tracker .window-content {
+  /* Make the Foundry window-content itself the "card" surface (matches Resource Tracker behavior). */
+  /* System-agnostic translucency (do NOT depend on Nimble variables). */
+  background: rgba(24, 24, 33, 0.78) !important;
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  padding: 8px !important;
+  border: 1px solid var(--nimble-input-border-color, rgba(231, 209, 177, 0.25)) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.35) !important;
+
+  /* Avoid theme clipping */
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}
+
+
+.floating-hp-tracker .fhp-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+
+  user-select: none;
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif);
+  font-size: 13px;
+
+  /* The "card" frame lives on .window-content; keep this wrapper neutral. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+
+  /* Default draggable cursor (overridden on controls) */
+  cursor: grab !important;
+}
+
+/* Default stacking order (top -> controls -> targeted). */
+.floating-hp-tracker .fhp-top { order: 0; }
+.floating-hp-tracker .fhp-controls { order: 1; }
+.floating-hp-tracker .fhp-targeted { order: 2; }
+
+/* If the HUD is near the bottom of the screen, open the Targeted block upward.
+   In "open up" mode, the Targeted block should be completely above the main HUD
+   (above the name line), rather than inserted between sections. */
+.floating-hp-tracker.fhp-open-up .fhp-targeted {
+  /* Keep the Targeted section within the same bounded HUD "card". */
+  position: static;
+  order: -1; /* above the name line */
+
+  margin: 0 0 8px 0;
+  padding: 0 0 8px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(231,209,177,0.25);
+}
+
+
+
+/* While dragging, force the closed-hand cursor even when hovering child elements. */
+.floating-hp-tracker.fhp-dragging,
+.floating-hp-tracker.fhp-dragging * {
+  cursor: grabbing !important;
+}
+
+/* Default draggable surface cursor. */
+.floating-hp-tracker .fhp-wrap { cursor: grab !important; }
+
+/* Foundry may apply a move cursor to windows; override on our non-interactive surfaces. */
+.floating-hp-tracker,
+.floating-hp-tracker .window-content,
+.floating-hp-tracker .fhp-top,
+.floating-hp-tracker .fhp-header,
+.floating-hp-tracker .fhp-resource,
+.floating-hp-tracker .fhp-controls,
+.floating-hp-tracker .fhp-token-stats,
+.floating-hp-tracker .fhp-character-name {
+  cursor: grab;
+}
+
+/* Controls should not look draggable. */
+.floating-hp-tracker button,
+.floating-hp-tracker input,
+.floating-hp-tracker select,
+.floating-hp-tracker textarea,
+.floating-hp-tracker a,
+.floating-hp-tracker label {
+  cursor: auto;
+}
+
+.floating-hp-tracker button { cursor: pointer; }
+.floating-hp-tracker input,
+.floating-hp-tracker textarea { cursor: text; }
+
+.floating-hp-tracker .fhp-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.floating-hp-tracker .fhp-header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.floating-hp-tracker .fhp-character-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.floating-hp-tracker .fhp-token-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.floating-hp-tracker .fhp-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  line-height: 1;
+
+  color: #fff;
+  /* darker green so the white number stays readable */
+  background: var(--fhp-hpbg, color-mix(in srgb, var(--color-level-success, #2f8f2f) 70%, #000));
+  border: 1px solid rgba(0,0,0,0.35);
+}
+
+.floating-hp-tracker .fhp-stat.fhp-temp {
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  background: var(--nimble-input-background-color, rgba(0,0,0,0.25));
+  border: 1px solid rgba(231,209,177,0.55);
+}
+
+/* HP bar */
+.floating-hp-tracker .fhp-resource {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(231,209,177,0.35);
+}
+
+.floating-hp-tracker .fhp-bar {
+  height: 100%;
+  width: 0%;
+}
+
+.floating-hp-tracker .fhp-temp-bar {
+  position: absolute;
+  left: 0;
+  top: 1px;
+  height: 4px;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(231,209,177,0.45);
+  opacity: 0.9;
+}
+
+.floating-hp-tracker .fhp-bar-change {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 750;
+  font-size: 12px;
+
+  background: rgba(24, 24, 33, 0.92);
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  border: 1px solid rgba(231,209,177,0.35);
+  pointer-events: none;
+}
+
+.floating-hp-tracker .fhp-resource:hover .fhp-bar-change { display: inline-block; }
+
+/* Controls */
+.floating-hp-tracker .fhp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+
+  /* space between the bar and the buttons */
+  margin-top: 6px;
+}
+
+/* Targeted section (Phase 1: separate, unambiguous controls for targeted tokens) */
+.floating-hp-tracker .fhp-targeted {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(231,209,177,0.25);
+}
+
+.floating-hp-tracker .fhp-targeted-header {
+  flex-wrap: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-weight: 650;
+  /* Slightly larger to match the prominence of the controlled token name. */
+  font-size: 14px;
+  line-height: 1;
+  /* Keep the header height stable even when contextual condition buttons appear. */
+  min-height: 28px;
+  opacity: 0.95;
+
+  /* Make hover tooltips easy to trigger (don't feel draggable). */
+  cursor: default;
+}
+
+.floating-hp-tracker .fhp-targeted-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.floating-hp-tracker .fhp-targeted-warning {
+  flex: 0 0 auto;
+  opacity: 0.95;
+}
+
+/* Mixed PCs + NPCs targeted => red warning icon at the beginning. */
+.floating-hp-tracker.fhp-targeted-mixed .fhp-targeted-warning {
+  color: #ff4d4d;
+  order: 0;
+}
+
+/* If ONLY PCs are targeted, shift the targeted header accent toward "good". */
+.floating-hp-tracker.fhp-targeted-onlypcs .fhp-targeted-header {
+  /* Match the exact "healthy" accent used by the HP pill/bar (set by JS). */
+  color: var(--fhp-health-full, var(--color-level-success, #2f8f2f));
+}
+
+.floating-hp-tracker .fhp-targeted-controls {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  position: relative;
+  padding-right: 44px; /* space for contextual condition button */
+}
+
+.fhp-targeted-spacer {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+
+.floating-hp-tracker .fhp-targeted-conditions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.fhp-cond-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  width: 38px;
+  height: 26px;
+  line-height: 26px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fhp-cond-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+
+.floating-hp-tracker .fhp-death-savingthrow {
+  display: none;
+  width: 40px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.floating-hp-tracker .fhp-death-savingthrow > div {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(231,209,177,0.45);
+  background: rgba(0,0,0,0.18);
+}
+
+.floating-hp-tracker .fhp-death-savingthrow > div.active {
+  background: rgba(255,77,77,0.55);
+  border-color: rgba(255,77,77,0.85);
+}
+
+.floating-hp-tracker button.fhp-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  min-height: 26px;
+
+  border-radius: 9px;
+  background: var(--nimble-input-background-color, rgba(0,0,0,0.25));
+  border: 1px solid rgba(231,209,177,0.55);
+  color: var(--nimble-dark-text-color, #E7D1B1);
+
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.floating-hp-tracker button.fhp-btn:hover {
+  outline: 2px solid #ff4d4d;
+  outline-offset: 1px;
+  box-shadow: 0 0 10px rgba(255,77,77,0.35);
+  border-color: rgba(255,77,77,0.85);
+}
+
+.floating-hp-tracker .fhp-symbol {
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+/* Targeted Armor Toggle */
+.floating-hp-tracker button.fhp-btn.fhp-armor {
+  width: 38px; /* match other buttons */
+}
+
+.floating-hp-tracker .fhp-armor-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Unarmored: "outline" feel via lowered opacity */
+.floating-hp-tracker .fhp-armor-unarmored { opacity: 0.55; }
+
+/* Medium/Heavy: more solid */
+.floating-hp-tracker .fhp-armor-medium { opacity: 0.9; }
+.floating-hp-tracker .fhp-armor-heavy { opacity: 1; }
+
+.floating-hp-tracker input.fhp-input {
+  flex: 0 0 auto;
+  width: 68px; /* wider than before */
+  height: 26px;
+
+  border-radius: 9px;
+  background: var(--nimble-input-background-color, rgba(0,0,0,0.25));
+  border: 1px solid rgba(231,209,177,0.55);
+  color: var(--nimble-dark-text-color, #E7D1B1);
+
+  padding: 0 6px;
+  font-weight: 900;
+  font-size: 16px;
+  text-align: center;
+}
+
+.floating-hp-tracker input.fhp-input:focus {
+  outline: 2px solid #ff4d4d;
+  outline-offset: 1px;
+  box-shadow: 0 0 10px rgba(255,77,77,0.20);
+  border-color: rgba(255,77,77,0.85);
+}
+
+/* When no token is selected, reduce top padding a touch (controls-only state). */
+.floating-hp-tracker:not(.fhp-has-any) .window-content { padding-top: 6px !important; }
+
+/* Closed-hand cursor while actively dragging */
+.floating-hp-tracker.fhp-dragging,
+.floating-hp-tracker.fhp-dragging * {
+  cursor: grabbing !important;
+}
+
+
+
+/* ---------------------------
+   Right-click mini context menu
+--------------------------- */
+.fhp-context-menu {
+  position: fixed;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--nimble-surface-background, rgba(20, 20, 20, 0.95));
+  border: 1px solid var(--nimble-border-color, rgba(255,255,255,0.15));
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  min-width: 220px;
+  font-family: var(--nimble-font-family, inherit);
+}
+
+.fhp-context-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--nimble-border-color, rgba(255,255,255,0.15));
+  background: var(--nimble-input-background-color, rgba(0,0,0,0.25));
+  color: var(--nimble-text-color, #e7e7e7);
+  cursor: pointer;
+}
+
+.fhp-context-menu-item:hover:not(:disabled) {
+  border-color: var(--nimble-accent-color, rgba(255,255,255,0.35));
+}
+
+.fhp-context-menu-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---------------------------
+   Context Inspector dialog content
+--------------------------- */
+.fhp-ci-dialog {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure the Context Inspector uses the same Nimble/RMS dark surface as the HUD.
+   Without this, Foundry/system themes can render a light window-content surface
+   which makes the inspector text unreadable. */
+.fhp-ci-dialog .window-content {
+  background: var(--nimble-sheet-background, rgba(18, 18, 26, 0.88));
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif);
+  padding: 10px;
+  border: 1px solid rgba(231, 209, 177, 0.35);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.fhp-ci-dialog .window-header {
+  background: var(--nimble-sheet-background, rgba(18, 18, 26, 0.88));
+  border: 1px solid rgba(231, 209, 177, 0.35);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 6px 10px;
+  margin: 0;
+}
+
+.fhp-ci-dialog .window-header .window-title {
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif);
+  font-weight: 750;
+  color: var(--nimble-dark-text-color, #E7D1B1);
+}
+
+.fhp-ci-dialog .window-header a,
+.fhp-ci-dialog .window-header button {
+  color: var(--nimble-dark-text-color, #E7D1B1);
+}
+
+.fhp-ci-dialog .dialog-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+
+.fhp-ci-dialog .dialog-buttons button {
+  flex: 1 1 auto;
+  background: var(--nimble-input-background-color, rgba(0, 0, 0, 0.25));
+  border: 1px solid rgba(231, 209, 177, 0.55);
+  border-radius: 10px;
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.fhp-ci-dialog .dialog-buttons button:hover {
+  outline: 2px solid #ff4d4d;
+  outline-offset: 1px;
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.20);
+  border-color: rgba(255, 77, 77, 0.85);
+}
+
+.fhp-ci {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--nimble-font-family, inherit);
+  color: var(--nimble-dark-text-color, #E7D1B1);
+}
+
+.fhp-ci-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fhp-ci-label {
+  opacity: 0.9;
+}
+
+.fhp-ci-val {
+  font-weight: 600;
+}
+
+.fhp-ci-title {
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.fhp-ci-hr {
+  border: 0;
+  height: 1px;
+  background: rgba(231, 209, 177, 0.35);
+  margin: 6px 0;
+}
+
+.fhp-ci-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.92em;
+}
+
+.fhp-ci-k {
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.fhp-ci-v {
+  opacity: 0.95;
+  text-align: right;
+}
+
+.fhp-ci-muted {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.fhp-ci-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Chat card breakdown rows */
+.rms-chat-breakdown {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--nimble-border-color, rgba(255,255,255,0.15));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rms-chat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rms-chat-row-label {
+  opacity: 0.9;
+}
+
+.rms-chat-row-val {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rms-chat-muted {
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+/* The Context Inspector already has a Close button; hide the header X to reduce clutter. */
+.fhp-ci-dialog .window-header .header-button.close,
+.fhp-ci-dialog .window-header a.header-button.close,
+.fhp-ci-dialog .window-header .close {
+  display: none !important;
+}
+
+
+/* --- Defend context (single targeted PC): subtle green background on the Armor/Defend button --- */
+.floating-hp-tracker .fhp-btn.fhp-defend-context,
+.floating-hp-tracker .fhp-targeted-controls .fhp-btn.fhp-defend-context {
+  background: rgba(40, 120, 60, 0.22);
+  border: 1px solid rgba(60, 180, 90, 0.55);
+}
+
+.floating-hp-tracker .fhp-btn.fhp-defend-context:hover,
+.floating-hp-tracker .fhp-targeted-controls .fhp-btn.fhp-defend-context:hover {
+  background: rgba(40, 120, 60, 0.30);
+}
+
+
+/* --- Fury Dice (Berserker) --- */
+/* Fury section inside extras dialog: avoid flex row constraints */
+.fhp-extras-dialog .fhp-fury-section { display: block; }
+
+.fhp-fury-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.fhp-fury-meta { display:flex; flex-direction:column; gap:2px; }
+.fhp-fury-current-label, .fhp-fury-current-val { font-weight: 750; font-size: 13px; }
+
+.fhp-fury-pool { margin-top: 8px; padding: 6px; border: 1px solid var(--nimble-input-border-color); border-radius: 10px; }
+.fhp-fury-dice { display:flex; flex-wrap: nowrap; gap: 6px; align-items:center; }
+.fhp-fury-die { display:flex; align-items:center; gap:6px; padding: 4px 6px; border: 1px solid var(--nimble-input-border-color); border-radius: 999px; background: rgba(0,0,0,0.12); }
+.fhp-fury-die-num { font-weight: 750; min-width: 14px; text-align:center; }
+.fhp-fury-die-x { width: 26px; height: 22px; line-height: 20px; border-radius: 999px; border: 1px solid var(--nimble-input-border-color); background: transparent; cursor: pointer; 
+  color: inherit;
+  font-weight: 700;
+}
+
+.fhp-fury-actions { margin-top: 10px; display:flex; gap: 10px; }
+.fhp-fury-actions .fhp-ex-roll-btn { flex: 1 1 0; white-space: nowrap; }
+
+/* Replace Die dialog: keep header/buttons visible */
+.fhp-fury-replace-dialog .window-content {
+  background: transparent !important;
+  color: var(--nimble-input-text-color, var(--nimble-sheet-text, #e9e9ee)) !important;
+  padding: 0 10px 10px !important;
+}
+.fhp-fury-replace-dialog .window-content {
+  background: var(--nimble-sheet-background, rgba(18, 18, 26, 0.88));
+  color: var(--nimble-sheet-text, #e9e9ee);
+  font-family: inherit;
+}
+
+.fhp-fury-replace-dialog .dialog-content {
+  padding-bottom: 8px;
+}
+
+.fhp-fury-replace-head {
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button {
+  width: 100%;
+  border: 1px solid var(--nimble-input-border-color);
+  background: rgba(0,0,0,0.10);
+  color: inherit;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button:hover {
+  outline: 2px solid rgba(220, 50, 50, 0.55);
+  outline-offset: 0px;
+}
+
+/* Ensure Replace Die dialog keeps the normal window header so it can be dragged */
+.fhp-fury-replace-dialog .window-header {
+  display: flex !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 8px 10px 6px !important;
+}
+.fhp-fury-replace-dialog .window-title { white-space: nowrap; }
+/* Fury Replace Die: match Nimble dialog header + tighter layout */
+.fhp-fury-replace-dialog .window-header {
+  background: rgba(18, 18, 26, 0.92);
+  border-bottom: 1px solid var(--nimble-input-border-color);
+  color: var(--nimble-sheet-text, #e9e9ee);
+}
+
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-sheet-text, #e9e9ee);
+}
+
+.fhp-fury-replace-dialog .dialog-content {
+  padding: 8px 10px 6px;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons {
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button {
+  padding: 7px 10px;
+}
+
+/* Replace Die header should not look like a separate "light" dialog bar */
+.fhp-fury-replace-dialog {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.88)) !important;
+  border: 1px solid var(--nimble-input-border-color) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+  overflow: hidden !important;
+}
+
+.fhp-fury-replace-dialog .window-header {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 6px 10px 0 !important;
+  color: var(--nimble-input-text-color, var(--nimble-sheet-text, #d6d6dc)) !important;
+}
+
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-input-text-color, var(--nimble-sheet-text, #d6d6dc)) !important;
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif) !important;
+  font-weight: 750 !important;
+  font-size: 13px !important;
+  opacity: 0.95 !important;
+}
+
+.fhp-fury-replace-dialog .window-content {
+  margin-top: 2px;
+  border-radius: 14px;
+}
+
+.fhp-fury-replace-dialog .dialog-content {
+  padding: 6px 10px 4px !important;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons {
+  gap: 6px !important;
+  padding: 0 10px 10px !important;
+}
+
+.fhp-fury-replace-dialog .window-header {
+  background: rgba(0, 0, 0, 0.22) !important;
+  border-bottom: 1px solid var(--nimble-input-border-color) !important;
+  padding: 6px 10px !important;
+}
+
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif) !important;
+  font-weight: 750 !important;
+  font-size: 13px !important;
+  opacity: 0.95 !important;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+}
+
+.fhp-fury-replace-dialog .window-content {
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+}
+
+/* v2.2.11: Replace Die dialog should use the same surface for header + body (no separate header bar) */
+.fhp-fury-replace-dialog {
+  width: 300px !important;
+  max-width: 300px !important;
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.88)) !important;
+  border: 1px solid var(--nimble-input-border-color) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+}
+
+.fhp-fury-replace-dialog .window-header {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 8px 10px 6px !important;
+}
+
+.fhp-fury-replace-dialog .window-content {
+  background: transparent !important;
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+  border-radius: 0 0 14px 14px !important;
+}
+
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+}
+
+/* v2.2.12: Integrate Replace Die header into the same surface (no distinct bar) */
+.fhp-fury-replace-dialog .window-header {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.88)) !important;
+  border-bottom: none !important;
+  padding: 6px 10px 4px !important;
+}
+
+.fhp-fury-replace-dialog .window-content {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.88)) !important;
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+}
+
+.fhp-fury-replace-dialog .dialog-content {
+  padding: 4px 10px 2px !important;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons {
+  padding: 0 10px 10px !important;
+}
+
+/* v2.2.13: Replace Die dialog - match Nimble dialog surface and reduce "see-through" */
+.fhp-fury-replace-dialog {
+  border: 1px solid var(--nimble-input-border-color) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+  overflow: hidden !important;
+}
+
+.fhp-fury-replace-dialog .window-header {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-bottom: 1px solid var(--nimble-input-border-color) !important;
+}
+
+.fhp-fury-replace-dialog .window-content {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.88)) !important;
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button {
+  border: 1px solid var(--nimble-input-border-color) !important;
+  background: rgba(0,0,0,0.10) !important;
+  color: var(--nimble-input-text-color, #cfcfd6) !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+}
+
+.fhp-fury-replace-dialog .dialog-buttons button:hover {
+  outline: 2px solid rgba(220, 50, 50, 0.55);
+  outline-offset: 0px;
+}
+
+/* v2.2.14: Hard override Replace Die dialog to be opaque and Nimble-surfaced */
+.fhp-fury-replace-dialog {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.92)) !important;
+}
+
+.fhp-fury-replace-dialog .window-header,
+.fhp-fury-replace-dialog .window-content {
+  background: var(--nimble-input-background-color, rgba(18, 18, 26, 0.92)) !important;
+}
+
+.fhp-fury-replace-dialog .dialog-content,
+.fhp-fury-replace-dialog .dialog-buttons {
+  background: transparent !important;
+}
+
+/* v2.2.15: Replace Die dialog — match Nimble Extras surface (single integrated panel) */
+.fhp-fury-replace-dialog {
+  background: var(--nimble-sheet-background, rgba(18, 18, 26, 0.88)) !important;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif) !important;
+  border: 1px solid rgba(231, 209, 177, 0.35) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+  overflow: hidden !important;
+}
+
+/* Make the header look like part of the same surface (no distinct bar) */
+.fhp-fury-replace-dialog .window-header {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 8px 10px 6px !important;
+}
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  font-weight: 800 !important;
+}
+
+/* Window content sits on the same surface */
+.fhp-fury-replace-dialog .window-content {
+  background: transparent !important;
+  padding: 0 10px 10px !important;
+  color: inherit !important;
+}
+
+/* Tighter buttons like the other Nimble dialogs */
+.fhp-fury-replace-dialog .dialog-buttons {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+.fhp-fury-replace-dialog .dialog-buttons button {
+  width: 100% !important;
+  border: 1px solid rgba(231, 209, 177, 0.35) !important;
+  background: rgba(0, 0, 0, 0.16) !important;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  border-radius: 10px !important;
+  padding: 7px 10px !important;
+  font-weight: 750 !important;
+}
+.fhp-fury-replace-dialog .dialog-buttons button:hover {
+  outline: 2px solid rgba(220, 50, 50, 0.55) !important;
+  outline-offset: 0px !important;
+}
+
+/* v2.2.17: Prevent unwanted red outline on Replace Die buttons */
+.fhp-fury-replace-dialog .dialog-buttons button:focus,
+.fhp-fury-replace-dialog .dialog-buttons button:focus-visible,
+.fhp-fury-replace-dialog .dialog-buttons button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Only show red outline on hover (not persistent) */
+.fhp-fury-replace-dialog .dialog-buttons button:hover {
+  outline: 2px solid rgba(220, 50, 50, 0.55) !important;
+  outline-offset: 0px !important;
+}
+
+/* v2.2.18: Replace Die title/close match Nimble text */
+.fhp-fury-replace-dialog .window-title,
+.fhp-fury-replace-dialog a.header-button {
+  color: var(--nimble-input-text-color, var(--nimble-sheet-text, #e9e9ee)) !important;
+  font-family: "Roboto Condensed", var(--font-primary, sans-serif) !important;
+  font-weight: 800 !important;
+}
+
+/* v2.2.20: Replace Die dialog uses the same styling as Extras dialog */
+.fhp-fury-replace-dialog .dialog-buttons button:focus,
+.fhp-fury-replace-dialog .dialog-buttons button:focus-visible,
+.fhp-fury-replace-dialog .dialog-buttons button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+
+/* v2.2.22: Inline Fury replace panel (no popup) */
+.fhp-fury-replace-inline {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(231, 209, 177, 0.25);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.10);
+}
+.fhp-fury-replace-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fhp-fury-replace-btns .fhp-ex-roll-btn {
+  flex: 1 1 120px;
+}
+
+
+/* v2.2.34: Ensure Fury replace buttons receive clicks (some drag/overlay layers can swallow input) */
+.fhp-fury-actions,
+.fhp-fury-actions button,
+button[data-action="fury-replace"],
+button[data-action="fury-keep"] {
+  pointer-events: auto;
+  position: relative;
+  z-index: 50;
+}
+
+/* Keep Fury action buttons inside the window */
+.fhp-fury-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fhp-fury-actions .fhp-ex-roll-btn {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+
+/* v2.2.38: Fury Dice UI polish (fixed render + row buttons) */
+.fhp-fury-current {
+  font-size: 1.45em !important;
+  font-weight: 800 !important;
+}
+.fhp-fury-pendingline {
+  margin-top: 6px;
+  font-size: 1.12em;
+  font-weight: 650;
+  opacity: 0.95;
+}
+.fhp-fury-actions {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+.fhp-fury-actions .fhp-ex-roll-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .fhp-fury-actions { flex-wrap: wrap; }
+}
+
+.fhp-fury-subline { font-size: 1.15em; font-weight: 700; }
+
+/* ---------------- Light Mode (theme-light) color-only adjustments ----------------
+   Goal: Ensure text remains readable in Foundry Light Mode.
+   NOTE: Color tweaks only — no layout or behavior changes.
+*/
+
+/* ---------------- Light Mode fixes (Foundry theme compatibility) ----------------
+   Foundry applies the theme class on HTML in some versions (html.theme-light),
+   so we target `.theme-light` broadly instead of only body.theme-light.
+   Color-only overrides: no layout/behavior changes. */
+
+.theme-light .floating-hp-tracker .window-content {
+  /* Light Mode: keep the same “frosted” feel but on a light surface. */
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--color-text-dark-primary, #1f1f1f) !important;
+
+  /* Ensure any components using --nimble-text-color stay readable in Light Mode. */
+  --nimble-text-color: var(--color-text-dark-primary, #1f1f1f);
+}
+
+.theme-light .fhp-extras-dialog .window-content {
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--color-text-dark-primary, #1f1f1f) !important;
+  --nimble-text-color: var(--color-text-dark-primary, #1f1f1f);
+}
+
+/* Force common text-bearing controls inside these windows (Foundry Light Mode can override them). */
+/* IMPORTANT: Do NOT blanket-force `color: inherit` on *all* descendants.
+   That would wipe intentional accent colors (e.g., green targeted header, red friendly-fire warning).
+   Instead, only force base/control text where Foundry Light Mode can paint things black.
+   Color-only overrides: no layout/behavior changes. */
+
+.theme-light .floating-hp-tracker .window-content :is(p, span, div, label, small, strong, em):not(.fhp-targeted-header):not(.fhp-targeted-warning) {
+  color: inherit;
+}
+
+.theme-light .floating-hp-tracker .window-content :is(button, input, select, textarea) {
+  color: inherit !important;
+}
+
+.theme-light .fhp-extras-dialog .window-content :is(p, span, div, label, small, strong, em) {
+  color: inherit;
+}
+
+.theme-light .fhp-extras-dialog .window-content :is(button, input, select, textarea) {
+  color: inherit !important;
+}
+
+/* Light Mode: make the right-click +/- context menu match the frosted white surfaces.
+   NOTE: The context menu is appended to document.body, so it is NOT inside .floating-hp-tracker. */
+.theme-light .fhp-context-menu {
+  background: rgba(255, 255, 255, 0.90) !important;
+  border-color: rgba(0, 0, 0, 0.18) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25) !important;
+}
+.theme-light .fhp-context-menu-item {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(0, 0, 0, 0.16) !important;
+  color: var(--color-text-dark-primary, #1f1f1f) !important;
+}
+.theme-light .fhp-context-menu-item:hover:not(:disabled) {
+  border-color: rgba(0, 0, 0, 0.28) !important;
+}
+
+/* Tooltips/overlays inside the HUD should stay legible in Light Mode. */
+.theme-light .floating-hp-tracker .fhp-bar-change {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-dark-primary, #1f1f1f) !important;
+  border-color: rgba(0,0,0,0.18);
+}

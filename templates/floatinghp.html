@@ -1,0 +1,71 @@
+<div class="fhp-wrap">
+  <!-- Invisible drag handle (keeps the window draggable without showing a header bar) -->
+  <div class="fhp-drag" aria-label="Drag"></div>
+
+  <div class="fhp-top">
+    <div class="fhp-header">
+      <div class="fhp-character-name"></div>
+      <div class="fhp-token-stats"></div>
+    </div>
+
+    <div class="fhp-resource" aria-label="HP bar">
+      <div class="fhp-temp-bar"></div>
+      <div class="fhp-bar"></div>
+      <div class="fhp-bar-change"></div>
+    </div>
+  </div>
+
+  <div class="fhp-controls" role="group" aria-label="HP controls">
+    <div class="fhp-death-savingthrow fail" title="Death save failure"><div></div><div></div><div></div></div>
+<button type="button" id="fhp-btn-hurt" class="fhp-btn fhp-bad" title="Apply damage">
+      <span class="fhp-symbol">−</span>
+    </button>
+
+    <input id="fhp-hp" class="fhp-input" title="Left-click: manual enter
+Right-click: pull from chat
+Click +/- to add/subtract or hit Enter to set absolute value" type="text" inputmode="numeric" autocomplete="off" />
+
+    <button type="button" id="fhp-btn-heal" class="fhp-btn fhp-good" title="Heal">
+      <span class="fhp-symbol">+</span>
+    </button>
+<div class="fhp-death-savingthrow save" title="Death save success"><div></div><div></div><div></div></div>
+  </div>
+
+  <!-- Targeted block (only shown when player-damage mode is enabled AND targets exist) -->
+  <div class="fhp-targeted" style="display:none;" aria-label="Targeted HP controls">
+    <div class="fhp-targeted-header" title="">
+      <span class="fhp-targeted-warning" style="display:none;" title="Friendly Fire Warning">
+        <i class="fas fa-triangle-exclamation"></i>
+      </span>
+      <span class="fhp-targeted-title">Targeted</span>
+      <div class="fhp-targeted-conditions" style="display:none;" aria-label="Pulled conditions"></div>
+    </div>
+
+    <div class="fhp-targeted-controls" role="group" aria-label="Targeted HP controls">
+      <!-- Armor mode toggle (Targeted only): Unarmored -> Medium -> Heavy -->
+      <button type="button" id="fhp-tgt-armor" class="fhp-btn fhp-armor" title="Armor: Unarmored
+Click to cycle/manual override
+Right-click to re-sync with targeted token armor">
+        <i class="fa-solid fa-ban fhp-armor-icon fhp-armor-unarmored" aria-hidden="true"></i>
+      </button>
+
+      <button type="button" id="fhp-tgt-hurt" class="fhp-btn fhp-bad" title="Apply damage; right-click for options">
+        <span class="fhp-symbol">−</span>
+      </button>
+
+      <input id="fhp-tgt-hp" class="fhp-input" title="Left-click: manual enter
+Right-click: pull from chat
+Click +/- to add/subtract or hit Enter to auto-subtract" type="text" inputmode="numeric" autocomplete="off" />
+
+      <button type="button" id="fhp-tgt-heal" class="fhp-btn fhp-good" title="Apply healing; right-click for options">
+        <span class="fhp-symbol">+</span>
+      </button>
+    
+      <button type="button" id="fhp-tgt-extras" class="fhp-btn" title="Extra damage options">
+        <i class="fa-solid fa-dice-d20" aria-hidden="true"></i>
+      </button>
+
+
+</div>
+  </div>
+</div>
