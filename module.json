@@ -2,7 +2,7 @@
   "id": "nimble-hp-and-damage",
   "title": "Nimble HP and Damage",
   "description": "Floating HP HUD plus GM-routed damage/healing for player-targeted NPCs (Nimble).",
-  "version": "2.2.43",
+  "version": "2.3.0",
   "authors": [
     {
       "name": "Rickrollnomicon"

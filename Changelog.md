@@ -1,4 +1,4 @@
-## Unreleased
+## [2.3.0] - 2026-03-27
 
 ### Added
 - Undo button for targeted damage and healing chat cards
