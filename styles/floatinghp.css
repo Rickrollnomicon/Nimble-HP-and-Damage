@@ -1238,3 +1238,165 @@ button[data-action="fury-keep"] {
   color: var(--color-text-dark-primary, #1f1f1f) !important;
   border-color: rgba(0,0,0,0.18);
 }
+
+/* Enhanced chat-card foundation */
+.nhd-chat-enhanced {
+  margin: 0.4rem 0 0.45rem;
+  padding: 0.55rem 0.6rem 0.5rem;
+  border: 1px solid rgba(231, 209, 177, 0.24) !important;
+  border-radius: 10px;
+  background: rgba(24, 24, 33, 0.92) !important;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.18) !important;
+}
+
+.nhd-chat-enhanced--proxy {
+  margin-left: 0.55rem;
+  margin-right: 0.55rem;
+}
+
+.nhd-chat-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 6px 0;
+}
+
+.nhd-chat-control {
+  display: grid;
+  grid-template-columns: 100px auto;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 0;
+}
+
+.nhd-chat-label {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  opacity: 0.95;
+}
+
+.nhd-chat-cycle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(231, 209, 177, 0.35) !important;
+  background: rgba(0, 0, 0, 0.22) !important;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.nhd-chat-cycle--icon {
+  width: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+}
+
+.nhd-chat-cycle--icon i {
+  font-size: 13px !important;
+  line-height: 1 !important;
+}
+
+.nhd-chat-cycle:hover {
+  border-color: rgba(231, 209, 177, 0.5) !important;
+  box-shadow: 0 0 0 1px rgba(231, 209, 177, 0.14) inset !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #f2dfc2 !important;
+}
+
+.nhd-chat-cycle--active {
+  border-color: rgba(231, 209, 177, 0.48) !important;
+  background: rgba(231, 209, 177, 0.14) !important;
+  color: #f4e5cf !important;
+  box-shadow: 0 0 0 1px rgba(231, 209, 177, 0.12) inset !important;
+}
+
+.nhd-chat-preview {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  padding-top: 0.42rem;
+  border-top: 1px solid rgba(231, 209, 177, 0.14);
+  font-size: 13px;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  font-weight: 650;
+  opacity: 0.95;
+}
+
+.nhd-chat-preview-label {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  opacity: 0.95;
+  text-transform: none;
+}
+
+.nhd-chat-preview-expression {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  font-weight: 650;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+}
+
+.nhd-chat-preview-value,
+.nhd-chat-preview-total,
+.nhd-chat-preview-mod,
+.nhd-chat-preview-mod--positive,
+.nhd-chat-preview-mod--negative,
+.nhd-chat-preview-arrow {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  opacity: 0.95;
+}
+
+/* Light theme override intentionally deferred for enhanced chat foundation while dark-mode parity is stabilized. */
+
+
+.theme-light .nhd-chat-cycle {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.nhd-chat-apply-proxy {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  margin: 8px 0 8px;
+  border: 1px solid rgba(226, 206, 171, 0.28) !important;
+  border-radius: 8px;
+  background: rgba(10, 12, 22, 0.72);
+  color: #e2ceab;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nhd-chat-apply-proxy:hover {
+  border-color: rgba(226, 206, 171, 0.45);
+  background: rgba(16, 19, 31, 0.82);
+}
+
+
+.nhd-chat-apply-proxy-wrap {
+  display: block;
+  width: calc(100% - 1.1rem);
+  margin: 0.45rem 0.55rem 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.nhd-chat-apply-proxy {
+  box-sizing: border-box;
+}

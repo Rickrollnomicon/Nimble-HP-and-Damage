@@ -58,8 +58,10 @@ function _captureUndoSnapshot(actor) {
     statuses: {
       defeated: hasStatus("defeated"),
       dead: hasStatus("dead"),
-      dying: hasStatus("dying"),
-      bloodied: hasStatus("bloodied")
+      dying: hasStatus("dying")
+    },
+    wounds: {
+      value: Number(foundry.utils.getProperty(actor, `system.attributes.wounds.value`) ?? 0) || 0
     }
   };
 }
@@ -76,12 +78,15 @@ async function _restoreUndoSnapshot(snapshot) {
   actor = actor || game.actors?.get?.(snapshot.actorId) || null;
   if (!actor) return false;
 
-  await actor.update({
+  const actorUpdate = {
     [`system.${HP_VALUE_PATH}`]: Number(snapshot?.hp?.value ?? 0) || 0,
     [`system.${HP_TEMP_PATH}`]: Number(snapshot?.hp?.temp ?? 0) || 0,
     [`system.${HP_MAX_PATH}`]: Number(snapshot?.hp?.max ?? 0) || 0,
     [`system.${HP_TEMPMAX_PATH}`]: Number(snapshot?.hp?.tempmax ?? 0) || 0
-  });
+  };
+  if (snapshot?.wounds?.value !== undefined) actorUpdate[`system.attributes.wounds.value`] = Number(snapshot?.wounds?.value ?? 0) || 0;
+
+  await actor.update(actorUpdate);
 
   const app = game.FloatingHP?.app;
   try {
@@ -89,7 +94,6 @@ async function _restoreUndoSnapshot(snapshot) {
       await app._toggleStatusEffectBestEffort(actor, "defeated", !!snapshot?.statuses?.defeated);
       await app._toggleStatusEffectBestEffort(actor, "dead", !!snapshot?.statuses?.dead);
       await app._toggleStatusEffectBestEffort(actor, "dying", !!snapshot?.statuses?.dying);
-      await app._toggleStatusEffectBestEffort(actor, "bloodied", !!snapshot?.statuses?.bloodied);
     }
   } catch (err) {
     console.warn("[nimble-hp-and-damage] Undo restore: status sync failed:", err);
@@ -97,7 +101,29 @@ async function _restoreUndoSnapshot(snapshot) {
 
   return true;
 }
-async function _postTargetedChatCard({ entries = [], verbOverride = null, armorOverride = false, defendMeta = null, undoMeta = null }) {
+async function _postTargetedChatCard({ entries = [], verbOverride = null, armorOverride = false, transformMode = "normal", defendMeta = null, undoMeta = null }) {
+  const armorOverrideMode = (typeof armorOverride === "string")
+    ? String(armorOverride || "normal")
+    : (armorOverride ? "bypass" : "normal");
+  const transformState = String(transformMode || "normal");
+
+  const classifyArmorBucket = (mode, overrideMode) => {
+    const m = Number(mode ?? -1);
+    const ov = String(overrideMode || "normal");
+
+    if (ov === "bypass") return "manual-bypass";
+    if (ov === "reduced" || ov === "down") {
+      if (m === 1) return "Reduced Armor One Step";
+      if (m === 0) return "Unarmored/Bypassed";
+      if (m === 2) return "Heavy Armor";
+      return "Unknown";
+    }
+
+    if (m === 2) return "Heavy Armor";
+    if (m === 1) return "Medium Armor";
+    if (m === 0) return "Unarmored";
+    return "Unknown";
+  };
   try {
     const list = Array.isArray(entries) ? entries : [];
     if (!list.length) return;
@@ -156,6 +182,18 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
 
     // Optional Defend transparency block (single-target PC use-case).
     let defendDetailsHtml = "";
+    let modifierDetailsHtml = "";
+    if (isDamage && transformState !== "normal") {
+      const label = transformState === "resistant" ? "Resistant" : "Vulnerable";
+      const note = transformState === "resistant"
+        ? "Half damage after armor."
+        : "Bypasses remaining armor; doubles damage if effectively unarmored.";
+      modifierDetailsHtml = `
+<div class="rms-chat-breakdown">
+  <div class="rms-chat-row"><span class="rms-chat-row-label">Damage Modifier</span><span class="rms-chat-row-val">${_escape(label)}</span></div>
+  <div class="rms-chat-row"><span class="rms-chat-row-label"><span class="rms-chat-muted">${_escape(note)}</span></span></div>
+</div>`;
+    }
     if (isDamage && defendMeta && typeof defendMeta === "object") {
       try {
         const full = Number(defendMeta.full ?? 0) || 0;
@@ -175,13 +213,14 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
 
     // When Defend transparency is present (single-target PC use-case), omit the
     // monster armor-mode breakdown entirely to avoid showing "Unarmored" for PCs.
+    // Also omit the per-bucket breakdown for single-target monster cards; the
+    // badge already communicates the applied result clearly in that case.
     if (isDamage && defendMeta && typeof defendMeta === "object") {
       appliedDetailsHtml = "";
-    } else if (isDamage && !armorOverride) {
+    } else if (isDamage && armorOverrideMode !== "bypass" && list.length > 1) {
       const groups = new Map(); // key -> {count, value}
       for (const e of list) {
-        const mode = Number(e?.armorMode ?? -1);
-        const key = (mode === 0) ? "Unarmored" : (mode === 1) ? "Medium" : (mode === 2) ? "Heavy" : "Unknown";
+        const key = String(e?.bucketLabel || classifyArmorBucket(e?.armorMode, armorOverrideMode));
         const v = Math.abs(Number(e?.delta ?? 0) || 0);
         const g = groups.get(key) ?? { count: 0, values: new Set() };
         g.count += 1;
@@ -189,7 +228,11 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
         groups.set(key, g);
       }
 
-      const order = ["Unarmored", "Medium", "Heavy", "Unknown"];
+      const order = (transformState === "vulnerable")
+        ? ["Vulnerable (Armor Bypassed)", "Vulnerable (Double Damage)", "Unknown"]
+        : ((armorOverrideMode === "reduced" || armorOverrideMode === "down")
+          ? ["Heavy Armor", "Reduced Armor One Step", "Unarmored/Bypassed", "Unknown"]
+          : ["Heavy Armor", "Medium Armor", "Unarmored", "Unknown"]);
       const lines = [];
       for (const k of order) {
         const g = groups.get(k);
@@ -200,7 +243,7 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
       }
 
       appliedDetailsHtml = lines.length ? `<div class="rms-chat-breakdown">${lines.join("")}</div>` : "";
-    } else if (isDamage && armorOverride) {
+    } else if (isDamage && armorOverrideMode === "bypass" && transformState === "normal") {
       appliedDetailsHtml = `<div class="rms-chat-breakdown"><div class="rms-chat-row"><span class="rms-chat-row-label"><strong><em>Armor values manually ignored for this attack.</em></strong></span></div></div>`;
     }
     const canUndo = Array.isArray(undoMeta?.steps) && undoMeta.steps.length > 0;
@@ -239,6 +282,8 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
     <div class="rms-chat-label">Applied</div>
   </div>
 
+  ${modifierDetailsHtml}
+
   ${defendDetailsHtml}
 
   ${appliedDetailsHtml}
@@ -264,6 +309,251 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
   }
 }
 
+
+
+export function getMessageDamageContext(message) {
+  try {
+    return _computeAutoFillFromRollMessage(message);
+  } catch {
+    return null;
+  }
+}
+
+function _detectArmorModeForActorStatic(actor) {
+  try {
+    const a = String(actor?.system?.attributes?.armor ?? "").toLowerCase().trim();
+    if (!a) return 0;
+    if (a === "heavy") return 2;
+    if (a === "medium") return 1;
+    if (a === "unarmored" || a === "none" || a === "unarm") return 0;
+    if (a.includes("heavy")) return 2;
+    if (a.includes("medium")) return 1;
+    if (a.includes("unarm") || a.includes("none")) return 0;
+  } catch {}
+  return 0;
+}
+
+function _effectiveArmorModeForOverride(detected, overrideMode) {
+  const ov = String(overrideMode ?? "normal");
+  const base = Number(detected) || 0;
+  if (ov === "bypass") return 0;
+  if (ov === "down" || ov === "reduced") return base >= 2 ? 1 : 0;
+  return base;
+}
+
+
+function _isPcActorStatic(actor) {
+  try {
+    return !!(actor?.hasPlayerOwner || actor?.type === "character" || actor?.type === "pc");
+  } catch {
+    return false;
+  }
+}
+
+export function getDefendContextForActorStatic(actor) {
+  try {
+    if (!actor) return null;
+    const armorObj = foundry.utils.getProperty(actor, "system.attributes.armor");
+    const totalArmor = Number(armorObj?.value ?? 0) || 0;
+    const comps = Array.isArray(armorObj?.components) ? armorObj.components : [];
+    if (!Number.isFinite(totalArmor) && !comps.length) return null;
+
+    let armorGear = 0;
+    let shieldGear = 0;
+    const armorNames = [];
+    const shieldNames = [];
+
+    for (const c of comps) {
+      const src = String(c?.source ?? "").trim();
+      const val = Number(c?.value ?? 0) || 0;
+      if (!src || !Number.isFinite(val) || val === 0) continue;
+
+      const it = (actor.items ?? []).find(i => String(i?.name ?? "") === src) ?? null;
+      const ot = String(foundry.utils.getProperty(it, "system.objectType") ?? "").toLowerCase().trim();
+
+      if (ot === "shield") {
+        shieldGear += val;
+        shieldNames.push(src);
+      } else {
+        armorGear += val;
+        armorNames.push(src);
+      }
+    }
+
+    const gearSum = armorGear + shieldGear;
+    const basePortion = Math.max(0, (Number.isFinite(totalArmor) ? totalArmor : 0) - gearSum);
+
+    return {
+      totalArmor,
+      armorGear,
+      shieldGear,
+      basePortion,
+      armorNames,
+      shieldNames
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function getDefendValueForModeStatic(defCtx, mode) {
+  try {
+    const m = Number(mode ?? 0) || 0;
+    if (!defCtx) return 0;
+    if (m === 1) return (Number(defCtx.basePortion ?? 0) || 0) + (Number(defCtx.armorGear ?? 0) || 0);
+    if (m === 2) return (Number(defCtx.shieldGear ?? 0) || 0);
+    if (m === 3) return (Number(defCtx.basePortion ?? 0) || 0) + (Number(defCtx.armorGear ?? 0) || 0) + (Number(defCtx.shieldGear ?? 0) || 0);
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+function _getDefendLabelForModeStatic(defCtx, mode) {
+  try {
+    const m = Number(mode ?? 0) || 0;
+    const hasShield = (Number(defCtx?.shieldGear ?? 0) || 0) > 0;
+    if (m === 1) return hasShield ? "Defend Armor" : "Defend";
+    if (m === 2) return "Defend Shield";
+    if (m === 3) return "Defend Armor+Shield";
+    return "Defend: None";
+  } catch {
+    return "Defend";
+  }
+}
+function _armorStateLabel(mode) {
+  switch (String(mode ?? "normal")) {
+    case "reduced":
+    case "down":
+      return "Reduced Armor One Step";
+    case "bypass":
+      return "Bypassed Armor";
+    default:
+      return "Normal";
+  }
+}
+
+export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], baseContext = null, armorOverrideMode = "normal", resVulnMode = "normal", defendMode = 0, extraDamage = null, showVerificationCard = false } = {}) {
+  const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+  const tokens = (Array.isArray(tokenDocs) ? tokenDocs : []).filter(t => t?.actor && (t?.document?.uuid || t?.uuid));
+  if (!tokens.length) {
+    ui.notifications?.warn?.("No targets selected on this chat card.");
+    return false;
+  }
+
+  const base = baseContext ?? getMessageDamageContext(liveMessage);
+  const rawBaseFull = Number(base?.full ?? base?.amount ?? 0) || 0;
+  const rawBaseDiceOnly = Number(base?.diceOnly ?? rawBaseFull) || 0;
+  const extraEntries = extraDamage && typeof extraDamage === "object" ? Object.values(extraDamage).filter(v => v && typeof v === "object") : [];
+  const extraDiceOnly = extraEntries.reduce((sum, entry) => sum + (Number(entry?.diceOnly ?? entry?.total ?? 0) || 0), 0);
+  const baseFull = rawBaseFull + extraDiceOnly;
+  const baseDiceOnly = rawBaseDiceOnly + extraDiceOnly;
+  const isCrit = !!base?.isCrit;
+  if (!Number.isFinite(baseFull) || baseFull <= 0) {
+    ui.notifications?.info?.("No damage to apply.");
+    return false;
+  }
+
+  const pcTokens = tokens.filter(t => _isPcActorStatic(t?.actor));
+  const defendAllowed = tokens.length === 1 && pcTokens.length === 1;
+  const activeDefendMode = defendAllowed ? (Number(defendMode ?? 0) || 0) : 0;
+  const defendCtx = defendAllowed ? getDefendContextForActorStatic(pcTokens[0]?.actor) : null;
+  const defendPotential = defendAllowed ? (getDefendValueForModeStatic(defendCtx, activeDefendMode) ?? 0) : 0;
+
+  const entries = [];
+  const undoSteps = [];
+  let defendMeta = null;
+
+  for (const t of tokens) {
+    const actor = t.actor;
+    const tokenUuid = t?.document?.uuid ?? t?.uuid ?? null;
+    if (!actor || !tokenUuid) continue;
+
+    const actorIsPc = _isPcActorStatic(actor);
+    const detectedArmorMode = actorIsPc ? 0 : _detectArmorModeForActorStatic(actor);
+    const effectiveArmorMode = (actorIsPc || isCrit) ? 0 : _effectiveArmorModeForOverride(detectedArmorMode, armorOverrideMode);
+
+    let appliedDelta = baseFull;
+    let bucketLabel = null;
+    let afterArmor = baseFull;
+    if (!actorIsPc && !isCrit) {
+      if (effectiveArmorMode === 1) afterArmor = baseDiceOnly;
+      else if (effectiveArmorMode === 2) afterArmor = Math.ceil(baseDiceOnly / 2);
+      else afterArmor = baseFull;
+    }
+
+    if (!actorIsPc) {
+      if (resVulnMode === "resistant") {
+        appliedDelta = Math.ceil(afterArmor / 2);
+      } else if (resVulnMode === "vulnerable") {
+        if (isCrit) {
+          appliedDelta = afterArmor;
+        } else if (effectiveArmorMode === 0) {
+          appliedDelta = afterArmor * 2;
+          bucketLabel = "Vulnerable (Double Damage)";
+        } else {
+          appliedDelta = baseFull;
+          bucketLabel = "Vulnerable (Armor Bypassed)";
+        }
+      } else {
+        appliedDelta = afterArmor;
+      }
+    } else {
+      appliedDelta = baseFull;
+    }
+
+    if (defendAllowed && actorIsPc && Number.isFinite(defendPotential) && defendPotential > 0) {
+      const pre = Math.max(0, Number(appliedDelta) || 0);
+      const reduced = Math.min(pre, Math.max(0, Number(defendPotential) || 0));
+      const final = Math.max(0, pre - reduced);
+      appliedDelta = final;
+      const label = _getDefendLabelForModeStatic(defendCtx, activeDefendMode);
+      defendMeta = { full: pre, defended: reduced, final, label, note: "" };
+    }
+
+    appliedDelta = Math.max(0, Number(appliedDelta) || 0);
+    const undoBefore = _captureUndoSnapshot(actor);
+    entries.push({ token: t, delta: appliedDelta, armorMode: effectiveArmorMode, bucketLabel });
+    if (undoBefore) undoSteps.push({
+      actorId: actor.id,
+      actorUuid: actor.uuid,
+      tokenUuid,
+      before: undoBefore
+    });
+
+    await requestApplyHpDelta({
+      tokenUuid,
+      actorUuid: actor.uuid,
+      delta: appliedDelta,
+      // Use the smart/default HP application path so Temp HP is consumed
+      // first, matching the floating HUD behavior.
+      target: undefined,
+      note: `Enhanced Chat Card (${String(armorOverrideMode)}, ${String(resVulnMode)}, defend=${String(activeDefendMode)})`,
+      chatCard: false
+    });
+  }
+
+  if (!entries.length) {
+    ui.notifications?.info?.("No damage to apply.");
+    return false;
+  }
+
+  if (showVerificationCard) {
+    await _postTargetedChatCard({
+      entries,
+      armorOverride: armorOverrideMode,
+      transformMode: defendAllowed ? "normal" : resVulnMode,
+      defendMeta,
+      undoMeta: undoSteps.length ? {
+        steps: undoSteps,
+        createdBy: game.user?.id,
+        undone: false
+      } : null
+    });
+  }
+
+  return true;
+}
 
 // ---------------- Auto-prefill from last chat roll (Phase 2: Apply Damage reuse) ----------------
 // Goal: reuse the Apply Damage macro's approach to reading the most recent visible roll total
@@ -852,16 +1142,21 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   nonDismissible = true;
 
-  // Targeted Armor Mode (client-side only)
-  // 0 = Unarmored (Full)
-  // 1 = Medium (Dice only)
-  // 2 = Heavy (Half dice only, round up)
+  // Targeted Armor Base Mode (client-side only)
+  // 0 = Unarmored
+  // 1 = Medium
+  // 2 = Heavy
   _tgtArmorMode = 0;
 
-  // If TRUE, the user has manually overridden the armor mode toggle.
-  // When FALSE, the HUD will prefer syncing the toggle to the targeted actors
-  // when they share the same armor mode.
+  // If TRUE, the user has manually overridden the default armor behavior.
+  // When FALSE, the HUD uses each target's detected armor normally.
   _tgtArmorOverride = false;
+
+  // Targeted Armor Override State
+  // "normal" = use default detected armor behavior
+  // "reduced" = reduce armor one step (heavy->medium, medium->unarmored)
+  // "bypass" = ignore armor
+  _tgtArmorOverrideState = "normal";
 
   // Targeted Defend Mode (single PC target only)
   // 0 = None
@@ -1137,6 +1432,7 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
           this._applyArmorModeToTargetedInput();
         } else {
           this._tgtArmorOverride = false;
+          this._tgtArmorOverrideState = "normal";
           // On an explicit "pull from chat" action, re-sync armor mode from the *current targets*
           // even if the user previously cycled the toggle. This prevents stale/manual states
           // from carrying forward unintentionally between different target sets.
@@ -1196,9 +1492,7 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
           const vals = [];
           for (const t of tokens) {
             const a = t?.actor;
-            const armorMode = (this._tgtArmorOverride
-              ? (Number(this._tgtArmorMode ?? 0) || 0)
-              : ((this._detectArmorModeForActor?.(a) ?? (Number(this._tgtArmorMode ?? 0) || 0)) || 0));
+            const armorMode = this._getEffectiveArmorModeForActor?.(a) ?? (Number(this._detectArmorModeForActor?.(a) ?? this._tgtArmorMode ?? 0) || 0);
             let afterArmor = baseFull;
             // Crit bypasses armor.
             if (!isCrit) {
@@ -1699,7 +1993,10 @@ _autoSetArmorModeFromTargets(force = false) {
     try {
       if (!force && this._tgtArmorOverride) return;
       const tokens = this._getTargetedTokens?.() ?? [];
-      if (!tokens.length) return;
+      if (!tokens.length) {
+        this._tgtArmorMode = 0;
+        return;
+      }
 
       const modes = [];
       for (const t of tokens) {
@@ -1709,12 +2006,41 @@ _autoSetArmorModeFromTargets(force = false) {
         modes.push(Number(m) || 0);
       }
 
-      if (!modes.length) return;
-      const uniq = Array.from(new Set(modes));
-      if (uniq.length === 1) this._tgtArmorMode = uniq[0];
-      // If mixed, keep whatever the current toggle is showing.
-      // (Actual damage math still evaluates per-target armor.)
+      if (!modes.length) {
+        this._tgtArmorMode = 0;
+        return;
+      }
+
+      // For display purposes, prefer the highest armor tier among the current targets.
+      // Actual damage math still evaluates per-target armor unless an override is active.
+      this._tgtArmorMode = Math.max(...modes);
+      if (force) this._tgtArmorOverrideState = "normal";
     } catch { /* ignore */ }
+  }
+
+  _getTargetArmorBaseType() {
+    try {
+      const tokens = this._getTargetedTokens?.() ?? [];
+      if (!tokens.length) return 0;
+      const modes = tokens
+        .map(t => this._detectArmorModeForActor?.(t?.actor))
+        .filter(m => m != null)
+        .map(m => Number(m) || 0);
+      if (!modes.length) return Number(this._tgtArmorMode ?? 0) || 0;
+      return Math.max(...modes);
+    } catch {
+      return Number(this._tgtArmorMode ?? 0) || 0;
+    }
+  }
+
+  _getEffectiveArmorModeForActor(actor) {
+    try {
+      const detected = Number(this._detectArmorModeForActor?.(actor) ?? 0) || 0;
+      if (!this._tgtArmorOverride) return detected;
+      return _effectiveArmorModeForOverride(detected, this._tgtArmorOverrideState);
+    } catch {
+      return Number(this._tgtArmorMode ?? 0) || 0;
+    }
   }
 
   _setTargetArmorButtonVisual() {
@@ -1782,18 +2108,35 @@ Right-click to reset`;
 
       try { btn.classList.remove("fhp-defend-context"); } catch { /* ignore */ }
 
-      const mode = Number(this._tgtArmorMode ?? 0) || 0;
-      let title = "Armor: Unarmored";
-      const suffix = "\nClick to cycle/manual override\nRight-click to re-sync with targeted token armor";
+      const baseType = this._getTargetArmorBaseType?.() ?? (Number(this._tgtArmorMode ?? 0) || 0);
+      const overrideState = String(this._tgtArmorOverrideState ?? "normal");
+      let title = "Armor: Normal";
+      let suffix = "\nClick to cycle/manual override\nRight-click to re-sync with targeted token armor";
       // Unarmored: use a clearly distinct icon from Heavy armor (requested: fa-solid fa-ban)
       let icon = `<i class="fa-solid fa-ban fhp-armor-icon fhp-armor-unarmored" aria-hidden="true"></i>`;
 
-      if (mode === 1) {
-        title = "Armor: Medium";
-        icon = `<i class="fa-solid fa-shield-halved fhp-armor-icon fhp-armor-medium" aria-hidden="true"></i>`;
-      } else if (mode === 2) {
-        title = "Armor: Heavy";
-        icon = `<i class="fa-solid fa-shield fhp-armor-icon fhp-armor-heavy" aria-hidden="true"></i>`;
+      if (baseType <= 0) {
+        title = "Armor: Unarmored";
+        suffix = "\nNo armor to modify";
+      } else if (baseType === 1) {
+        if (overrideState === "bypass") {
+          title = "Armor: Bypassed Armor";
+          icon = `<i class="fa-solid fa-ban fhp-armor-icon fhp-armor-unarmored" aria-hidden="true"></i>`;
+        } else {
+          title = "Armor: Normal";
+          icon = `<i class="fa-solid fa-shield-halved fhp-armor-icon fhp-armor-medium" aria-hidden="true"></i>`;
+        }
+      } else {
+        if (overrideState === "reduced") {
+          title = "Armor: Reduced Armor One Step";
+          icon = `<i class="fa-solid fa-arrow-down fhp-armor-icon" aria-hidden="true"></i>`;
+        } else if (overrideState === "bypass") {
+          title = "Armor: Bypassed Armor";
+          icon = `<i class="fa-solid fa-ban fhp-armor-icon fhp-armor-unarmored" aria-hidden="true"></i>`;
+        } else {
+          title = "Armor: Normal";
+          icon = `<i class="fa-solid fa-shield fhp-armor-icon fhp-armor-heavy" aria-hidden="true"></i>`;
+        }
       }
 
       const showTips = game.settings.get("nimble-hp-and-damage", "show-tooltips") !== false;
@@ -1806,7 +2149,8 @@ Right-click to reset`;
         btn.removeAttribute("title");
       }
       btn.innerHTML = icon;
-      btn.dataset.armorMode = String(mode);
+      btn.dataset.armorMode = String(baseType);
+      btn.dataset.armorOverrideState = overrideState;
       btn.dataset.defendMode = "";
     } catch { /* ignore */ }
   }
@@ -1914,7 +2258,15 @@ Right-click to reset`;
       return full;
     }
 
-    const mode = Number(this._tgtArmorMode ?? 0) || 0;
+    const targetTokens = this._getTargetedTokens?.() ?? [];
+    const armorVals = targetTokens.map(t => {
+      const a = t?.actor;
+      let v = this._getEffectiveArmorModeForActor?.(a);
+      if (v == null) v = this._detectArmorModeForActor?.(a);
+      return Number(v ?? this._tgtArmorMode ?? 0) || 0;
+    });
+    const uniqArmor = Array.from(new Set(armorVals));
+    const mode = uniqArmor.length === 1 ? uniqArmor[0] : null;
     let out = full;
     if (mode === 1) out = diceOnly;
     else if (mode === 2) out = Math.ceil(diceOnly / 2);
@@ -1968,9 +2320,26 @@ Right-click to reset`;
   }
 
   _cycleTargetArmorMode() {
-    // Manual interaction implies user intent to override auto-detection.
+    const baseType = this._getTargetArmorBaseType?.() ?? 0;
+    if (baseType <= 0) {
+      this._tgtArmorOverride = false;
+      this._tgtArmorOverrideState = "normal";
+      this._setTargetArmorButtonVisual();
+      return;
+    }
+
+    // Manual interaction implies user intent to override default armor behavior.
     this._tgtArmorOverride = true;
-    this._tgtArmorMode = (Number(this._tgtArmorMode ?? 0) + 1) % 3;
+
+    const current = String(this._tgtArmorOverrideState ?? "normal");
+    if (baseType === 1) {
+      this._tgtArmorOverrideState = (current === "bypass") ? "normal" : "bypass";
+    } else {
+      if (current === "normal") this._tgtArmorOverrideState = "reduced";
+      else if (current === "reduced") this._tgtArmorOverrideState = "bypass";
+      else this._tgtArmorOverrideState = "normal";
+    }
+
     this._setTargetArmorButtonVisual();
     // Per requirements: toggling can overwrite manual input.
     this._applyArmorModeToTargetedInput();
@@ -2117,73 +2486,23 @@ Right-click to reset`;
 
 async _postExtraRollCard({ roll, attackerActor, label, formula }) {
     try {
-      const total = Number(roll?.total) || 0;
-      const safeLabel = foundry.utils.escapeHTML(label ?? "Extra Roll");
-      const safeFormula = foundry.utils.escapeHTML(formula ?? String(roll?.formula ?? ""));
-
-      // Keep chat styling consistent with the rest of this module (Rick Module Style cards).
-      // Use an alias-only speaker to ensure the message header can be overridden consistently.
-      const speaker = { alias: game.user?.name ?? "" };
-      let headerLabel = speaker.alias;
-      try {
-        if (game.user?.isGM) {
-          const controlled = canvas?.tokens?.controlled ?? [];
-          const names = Array.from(new Set(controlled.map(t => t?.name).filter(Boolean)));
-          if (names.length) {
-            const shown = names.slice(0, 3);
-            const more = names.length > 3 ? ` +${names.length - 3} more` : "";
-            headerLabel = `${shown.join(", ")}${more}`;
-          } else {
-            headerLabel = game.user?.name ?? headerLabel;
-          }
-        } else {
-          let charName = game.user?.character?.name;
-          if (!charName) {
-            try {
-              const owned = (canvas?.tokens?.placeables ?? []).find(t => t?.actor && t.actor.isOwner && !t.document?.hidden);
-              charName = owned?.actor?.name;
-            } catch { /* ignore */ }
-          }
-          headerLabel = charName ? `${game.user?.name ?? "Player"} (${charName})` : (game.user?.name ?? headerLabel);
-        }
-      } catch { /* ignore */ }
-
-      speaker.alias = headerLabel;
-
-      const content = String(`
-<div class="rms-chat-card rms-extra-roll" role="article">
-  <div class="rms-chat-header">
-    <div class="rms-chat-icon"><i class="fas fa-dice"></i></div>
-    <div class="rms-chat-headings">
-      <div class="rms-chat-title">${safeLabel}</div>
-      <div class="rms-chat-subtitle">Extra Roll</div>
-    </div>
-  </div>
-
-  <div class="rms-chat-section">
-    <div class="rms-chat-label">Formula</div>
-    <div class="rms-chat-value">${safeFormula}</div>
-  </div>
-
-  <div class="rms-chat-section rms-chat-applied">
-    <div class="rms-chat-badge">${total}</div>
-    <div class="rms-chat-label">Rolled</div>
-  </div>
-</div>`);
-
-      await ChatMessage.create({
-        type: CONST.CHAT_MESSAGE_TYPES.ROLL,
-        user: game.user.id,
-        speaker,
-        content,
-        rolls: [roll],
-        flags: {
-          [MODULE_ID]: {
-            kind: "extra-roll-card",
-            headerLabel
+      if (!roll) return;
+      // Extra-damage rolls should give visual feedback without adding chat clutter.
+      // Prefer Dice So Nice when available; otherwise quietly do nothing here.
+      const dsn = game?.dice3d;
+      if (dsn?.showForRoll) {
+        try {
+          await dsn.showForRoll(roll, game.user, true, null, false);
+          return;
+        } catch {
+          try {
+            await dsn.showForRoll(roll, game.user, true);
+            return;
+          } catch {
+            /* ignore */
           }
         }
-      });
+      }
     } catch {
       /* ignore */
     }
@@ -2676,9 +2995,10 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
 
     // Helper to compute per-target armor mode (best effort).
     const getArmorMode = (actor) => {
-      if (this._tgtArmorOverride) return Number(this._tgtArmorMode ?? 0) || 0;
+      const effective = this._getEffectiveArmorModeForActor?.(actor);
+      if (effective != null) return Number(effective) || 0;
       const detected = this._detectArmorModeForActor?.(actor);
-      if (detected == null) return Number(this._tgtArmorMode ?? 0) || 0; // fallback to current toggle
+      if (detected == null) return Number(this._tgtArmorMode ?? 0) || 0; // fallback to current display mode
       return Number(detected) || 0;
     };
 
@@ -2801,17 +3121,22 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
 entries.push({ token: t, delta: appliedDelta, armorMode });
     }
 
-    // Public chat card: post a single aggregated message.
-    await _postTargetedChatCard({
-      entries,
-      armorOverride: !!this._tgtArmorOverride,
-      defendMeta,
-      undoMeta: {
-        undone: false,
-        createdBy: game.user?.id ?? null,
-        steps: undoSteps
-      }
-    });
+    // Public chat card: post a single aggregated message only if enabled.
+    const showVerificationCard = !!game.settings.get(MODULE_ID, "show-damage-verification-card");
+
+    if (showVerificationCard) {
+      await _postTargetedChatCard({
+        entries,
+        armorOverride: this._tgtArmorOverride ? this._tgtArmorOverrideState : "normal",
+        transformMode: mode,
+        defendMeta,
+        undoMeta: {
+          undone: false,
+          createdBy: game.user?.id ?? null,
+          steps: undoSteps
+        }
+      });
+    }
 
     this.refreshSelected();
 
@@ -2867,7 +3192,7 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
     try { _autoFillClearTs = Date.now(); } catch { /* ignore */ }
     try { _lastChatAutoFill = { ..._lastChatAutoFill, amount: null, full: null, diceOnly: null, armorMode: null, armorMixed: false, isCrit: false, conditions: [], messageId: null, authorId: null, speakerActorId: null, ts: 0 }; } catch { /* ignore */ }
 
-    try { this._tgtArmorMode = 0; this._setTargetArmorButtonVisual(); } catch { /* ignore */ }
+    try { this._tgtArmorMode = 0; this._tgtArmorOverrideState = "normal"; this._setTargetArmorButtonVisual(); } catch { /* ignore */ }
     try { this._renderTargetedConditions(); } catch { /* ignore */ }
 
     // Also clear the targeted input's autofill markers so a future pull is treated as fresh.
@@ -2892,6 +3217,7 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
 
     // Reset armor toggle to Unarmored and clear manual override.
     try { this._tgtArmorOverride = false; } catch { /* ignore */ }
+    try { this._tgtArmorOverrideState = "normal"; } catch { /* ignore */ }
     try { this._tgtArmorMode = 0; } catch { /* ignore */ }
     try { this._setTargetArmorButtonVisual(); } catch { /* ignore */ }
 
@@ -4049,7 +4375,7 @@ Hooks.on("ready", async () => {
   }
 
   // Auto-open based on the toggle button state.
-  if (setting("show-dialog") && FloatingHPApp.canLoad()) {
+  if (setting("enable-floating-tracker") && setting("show-dialog") && FloatingHPApp.canLoad()) {
     game.FloatingHP.toggleApp(true);
   }
 });
@@ -4087,10 +4413,233 @@ Hooks.on("getSceneControlButtons", (controls) => {
     title: "Nimble HP HUD",
     icon: "fas fa-heart-pulse",
     toggle: true,
-    active: setting("show-dialog"),
+    active: setting("enable-floating-tracker") && setting("show-dialog"),
     onClick: (toggled) => {
+      if (!setting("enable-floating-tracker")) return;
       game.settings.set("nimble-hp-and-damage", "show-dialog", toggled);
       game.FloatingHP.toggleApp(toggled);
     }
   };
 });
+
+export function getAvailableTargetExtrasForActor(actor) {
+  try {
+    const app = game?.FloatingHP?.app;
+    if (app?._getAvailableTargetExtras) return app._getAvailableTargetExtras(actor) ?? [];
+  } catch {}
+  if (!actor) return [];
+  const lvl = Number(foundry.utils.getProperty(actor, "system.details.level") ?? foundry.utils.getProperty(actor, "system.level") ?? 1) || 1;
+  const starting = String(foundry.utils.getProperty(actor, "system.details.startingClass") ?? foundry.utils.getProperty(actor, "system.startingClass") ?? "").toLowerCase().trim();
+  const extras = [];
+  const pick = (table) => {
+    let best = null;
+    for (const row of table) {
+      if ((Number(row?.level) || 0) <= lvl) best = String(row?.formula || "");
+    }
+    return best;
+  };
+  const hasIdentifier = (identifier) => (actor?.items ?? []).some(it => String(foundry.utils.getProperty(it, "system.identifier") ?? "").trim() === String(identifier || "").trim());
+  if (starting === "the-cheat") {
+    const formula = pick([{ level: 1, formula: "1d6" },{ level: 3, formula: "1d8" },{ level: 7, formula: "2d8" },{ level: 9, formula: "2d10" },{ level: 11, formula: "2d12" },{ level: 15, formula: "2d20" },{ level: 17, formula: "3d20" }]);
+    if (formula) extras.push({ key: "sneak", label: "Sneak Attack", formula, level: lvl });
+  }
+  if (starting === "oathsworn") {
+    const formula = pick([{ level: 1, formula: "2d6" },{ level: 3, formula: "2d8" },{ level: 5, formula: "2d10" },{ level: 8, formula: "2d12" },{ level: 10, formula: "2d20" },{ level: 14, formula: "3d20" }]);
+    if (formula) extras.push({ key: "judgment", label: "Judgment Dice", formula, level: lvl });
+  }
+  if (hasIdentifier("shining-mandate-damage")) {
+    const formula = pick([{ level: 1, formula: "1d6" },{ level: 3, formula: "1d8" },{ level: 5, formula: "1d10" },{ level: 8, formula: "1d12" },{ level: 10, formula: "1d20" }]);
+    if (formula) extras.push({ key: "shining", label: "Shining Mandate", formula, level: lvl });
+  }
+  if (starting === "berserker") extras.push({ key: "fury", label: "Fury Dice", type: "fury", level: lvl });
+  return extras;
+}
+
+export async function postExtraRollCardStatic({ roll, attackerActor, label, formula }) {
+  try {
+    const app = game?.FloatingHP?.app;
+    if (app?._postExtraRollCard) return await app._postExtraRollCard({ roll, attackerActor, label, formula });
+  } catch {}
+  try {
+    if (!roll) return;
+    const dsn = game?.dice3d;
+    if (dsn?.showForRoll) {
+      try {
+        await dsn.showForRoll(roll, game.user, true, null, false);
+        return;
+      } catch {
+        try {
+          await dsn.showForRoll(roll, game.user, true);
+          return;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch {}
+}
+
+export async function getFuryDiceTotalForActor(actor) {
+  try {
+    const flags = await actor?.getFlag?.(MODULE_ID, "furyDice");
+    const dice = Array.isArray(flags?.dice) ? flags.dice : [];
+    return dice.reduce((sum, v) => sum + (Number(v) || 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
+export async function openFuryDiceDialogForActor(actor, { onChange=null, onClose=null } = {}) {
+  const app = game?.FloatingHP?.app;
+  if (!actor || !app?._renderFurySection) return false;
+  const getStoredPos = async () => {
+    try {
+      const pos = await game.user?.getFlag?.(MODULE_ID, "extrasDialogPos");
+      const left = Number(pos?.left);
+      const top = Number(pos?.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) return { left, top };
+    } catch {}
+    return null;
+  };
+  const persistPos = async () => {
+    try {
+      const pos = dlg?.position;
+      const left = Number(pos?.left);
+      const top = Number(pos?.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) {
+        await game.user.setFlag(MODULE_ID, "extrasDialogPos", { left, top });
+      }
+    } catch {}
+  };
+  const fireChange = async () => {
+    try {
+      const total = await getFuryDiceTotalForActor(actor);
+      if (typeof onChange === "function") await onChange(total);
+    } catch {}
+  };
+  const rerender = async () => {
+    try {
+      await persistPos();
+      dlg.close();
+    } catch {}
+    await openFuryDiceDialogForActor(actor, { onChange, onClose });
+  };
+  let dlg = null;
+  const content = await app._renderFurySection(actor, { includeClose: true });
+  const storedPos = await getStoredPos();
+  dlg = new Dialog({
+    title: "Fury Dice",
+    content: `<div class="fhp-extras-wrap">${content}</div>`,
+    buttons: {},
+    render: (html) => {
+      // Drag anywhere in the dialog body except interactive controls, matching the main HUD/extras dialog behavior.
+      try {
+        const $app = html.closest(".app");
+        const $content = $app.find(".window-content");
+        const isInteractive = (el) => {
+          if (!el) return false;
+          const tag = String(el.tagName || "").toLowerCase();
+          if (["button", "input", "textarea", "select", "a", "label"].includes(tag)) return true;
+          if (el.closest?.("button, input, textarea, select, a, label")) return true;
+          return false;
+        };
+        let dragging = false;
+        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+        const onMove = (e) => {
+          if (!dragging) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          dlg.setPosition({ left: startLeft + dx, top: startTop + dy });
+        };
+        const stopDrag = () => {
+          if (!dragging) return;
+          dragging = false;
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", stopDrag);
+          persistPos();
+        };
+        $content.off("mousedown.fhpFuryDrag").on("mousedown.fhpFuryDrag", (e) => {
+          if (e.button !== 0) return;
+          if (isInteractive(e.target)) return;
+          dragging = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          startLeft = dlg.position.left ?? 0;
+          startTop = dlg.position.top ?? 0;
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", stopDrag);
+        });
+      } catch {}
+      html.find('[data-action="fury-roll"]').off('click').on('click', async (ev) => {
+        ev.preventDefault();
+        try {
+          const st = await app._getFuryDiceState(actor);
+          const cap = app._getFuryCap(actor);
+          const dice = Array.isArray(st.dice) ? st.dice.slice() : [];
+          const roll = await app._rollFuryDie(st.faces);
+          await postExtraRollCardStatic({ roll, attackerActor: actor, label: "Fury Dice", formula: `1d${st.faces}` });
+          const value = Number(roll.total) || 0;
+          if (cap > 0 && dice.length >= cap) {
+            const hasLower = dice.some(v => value > (Number(v) || 0));
+            if (!hasLower) { ui.notifications?.info?.(`Rolled ${value}. No existing die is lower to replace.`); return; }
+            app._furyPendingReplace = { actorId: actor.id, rolledValue: value };
+            await rerender();
+            return;
+          }
+          dice.push(value);
+          await app._setFuryDiceState(actor, { active: true, dice });
+          await fireChange();
+          await rerender();
+        } catch (e) { console.error("Fury roll failed", e); ui.notifications?.error?.("Failed to roll Fury Die."); }
+      });
+      html.find('[data-action="fury-end"]').off('click').on('click', async (ev) => {
+        ev.preventDefault();
+        try {
+          if (app._furyPendingReplace?.actorId === actor.id) app._furyPendingReplace = null;
+          await app._setFuryDiceState(actor, { active: false, dice: [] });
+          await fireChange();
+          await rerender();
+        } catch (e) { console.error("End Rage failed", e); ui.notifications?.error?.("Failed to end Rage."); }
+      });
+      html.find('[data-action="fury-close"]').off('click').on('click', async (ev) => {
+        ev.preventDefault();
+        try { if (app._furyPendingReplace?.actorId === actor.id) app._furyPendingReplace = null; } catch {}
+        try { await persistPos(); } catch {}
+        try { dlg.close(); } catch {}
+      });
+      html.find('[data-action="fury-remove"]').off('click').on('click', async (ev) => {
+        ev.preventDefault();
+        try {
+          const idx = Number(ev.currentTarget?.dataset?.i);
+          const pending = (app._furyPendingReplace?.actorId === actor.id) ? app._furyPendingReplace : null;
+          const st = await app._getFuryDiceState(actor);
+          const dice = Array.isArray(st.dice) ? st.dice.slice() : [];
+          if (pending) {
+            const rolled = Number(pending.rolledValue) || 0;
+            if (Number.isFinite(idx) && idx >= 0 && idx < dice.length) {
+              const cur = Number(dice[idx]) || 0;
+              if (rolled > cur) dice[idx] = rolled;
+              await app._setFuryDiceState(actor, { active: true, dice });
+              await fireChange();
+            }
+            app._furyPendingReplace = null;
+            await rerender();
+            return;
+          }
+          if (Number.isFinite(idx) && idx >= 0 && idx < dice.length) {
+            dice.splice(idx, 1);
+            await app._setFuryDiceState(actor, { active: true, dice });
+            await fireChange();
+            await rerender();
+          }
+        } catch (e) { console.error("Spend die failed", e); ui.notifications?.error?.("Failed to spend Fury Die."); }
+      });
+    },
+    close: async () => {
+      try { await persistPos(); } catch {}
+      try { if (typeof onClose === "function") await onClose(); } catch {}
+    }
+  }, { width: 420, classes: ["floating-hp-tracker", "fhp-extras-dialog"], left: storedPos?.left, top: storedPos?.top });
+  dlg.render(true);
+  return true;
+}

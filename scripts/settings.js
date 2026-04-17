@@ -18,6 +18,36 @@ export const registerSettings = function () {
     requiresReload: true
   });
 
+  game.settings.register(modulename, "enable-enhanced-chat-cards", {
+    name: "Enable Enhanced Damage Chat Cards",
+    hint: "Adds an enhanced control strip above compatible Nimble Apply Damage buttons. Current build is a foundation pass.",
+    scope: "world",
+    restricted: true,
+    config: true,
+    default: false,
+    type: Boolean
+  });
+
+  game.settings.register(modulename, "enable-floating-tracker", {
+    name: "Enable Floating Tracker",
+    hint: "Show the Nimble HP and Damage floating tracker.",
+    scope: "world",
+    restricted: true,
+    config: true,
+    default: true,
+    type: Boolean
+  });
+
+  game.settings.register(modulename, "show-damage-verification-card", {
+    name: "Show Damage Verification Chat Card",
+    hint: "When enhanced application is used, always post the verification chat card.",
+    scope: "world",
+    restricted: true,
+    config: true,
+    default: true,
+    type: Boolean
+  });
+
   // Dead/Dying automation gate.
   game.settings.register(modulename, "add-defeated", {
     name: "Auto-apply Dead/Dying",
