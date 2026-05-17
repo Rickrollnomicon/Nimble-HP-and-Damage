@@ -1,3 +1,31 @@
+## [3.1.0] - 2026-05-17
+
+### Added
+- Added a GM-configurable Monster Armor Rule setting:
+  - Original / Just the Dice
+  - Flat Reduction / Playtest
+- Added Flat Reduction monster armor support:
+  - Medium Armor: -5
+  - Heavy Armor: -10
+- Added Vicious Opportunist support for Cheat attacks:
+  - Enhanced Chat Cards
+  - Floating HUD Extra Damage Options
+- Added persistent Misc Bonus support for Enhanced Chat Cards and HUD synchronization.
+  - "Just the Dice" mode separates flat vs. dice bonus for armor calculations
+  - Playtest mode simplifies to single flat bonus since dice vs. flat doesn't matter in that mode 
+
+### Changed
+- Unified damage recalculation handling across:
+  - Enhanced Chat Cards
+  - Floating HUD
+  - HUD synchronization
+  - Apply/Undo logic
+
+### Removed
+- Removed module-side monster Dead automation now that Nimble Core handles monster death conditions natively.
+
+---
+
 ## [3.0.0] - 2026-04-17
 
 ### Added

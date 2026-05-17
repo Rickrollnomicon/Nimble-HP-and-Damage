@@ -1,5 +1,38 @@
 import { MODULE_ID, requestToggleStatus } from "./relay.js";
-import { getMessageDamageContext, applyEnhancedChatCardDamage, getDefendContextForActorStatic, getDefendValueForModeStatic, getAvailableTargetExtrasForActor, postExtraRollCardStatic, getFuryDiceTotalForActor, openFuryDiceDialogForActor } from "./floatinghp.js";
+import { getMessageDamageContext, applyEnhancedChatCardDamage, getDefendContextForActorStatic, getDefendValueForModeStatic, getAvailableTargetExtrasForActor, postExtraRollCardStatic, getFuryDiceTotalForActor, openFuryDiceDialogForActor, isCheatActorForNHD, getPrimaryDieFacesFromMessage, useViciousOpportunistFromMessage } from "./floatinghp.js";
+function getMonsterArmorRule() {
+  try {
+    return game.settings.get(MODULE_ID, "monster-armor-rule") === "flat" ? "flat" : "original";
+  } catch {
+    return "original";
+  }
+}
+
+function applyMonsterArmorRule({ full = 0, diceOnly = 0, hasMedium = false, hasHeavy = false, effectiveArmorMode = "normal", isCrit = false } = {}) {
+  const baseFull = Math.max(0, Number(full) || 0);
+  const baseDiceOnly = Math.max(0, Number(diceOnly) || 0);
+  const mode = String(effectiveArmorMode || "normal");
+  if (isCrit || mode === "bypass") return { result: baseFull, bucket: 0 };
+
+  if (mode === "down" || mode === "reduced") {
+    if (!hasHeavy) return { result: baseFull, bucket: 0 };
+    if (getMonsterArmorRule() === "flat") return { result: Math.max(0, baseFull - 5), bucket: 1 };
+    return { result: baseDiceOnly, bucket: 1 };
+  }
+
+  if (hasHeavy) {
+    if (getMonsterArmorRule() === "flat") return { result: Math.max(0, baseFull - 10), bucket: 2 };
+    return { result: Math.ceil(baseDiceOnly / 2), bucket: 2 };
+  }
+
+  if (hasMedium) {
+    if (getMonsterArmorRule() === "flat") return { result: Math.max(0, baseFull - 5), bucket: 1 };
+    return { result: baseDiceOnly, bucket: 1 };
+  }
+
+  return { result: baseFull, bucket: 0 };
+}
+
 
 const stateByMessage = new Map();
 const DEFAULT_ARMOR_ICON_CLASS = "fa-solid fa-shield-halved";
@@ -13,6 +46,8 @@ function getState(messageId) {
       resVulnMode: "normal", // normal | resistant | vulnerable
       defendMode: 0,
       extraDamage: {},
+      miscFlatBonus: 0,
+      miscDiceBonus: 0,
       sourceActor: null,
       sourceExtras: [],
       sourceActorKey: null,
@@ -75,6 +110,33 @@ function iconForExtraKey(key, isRolled = false) {
   if (key === "judgment" || key === "shining") return '<i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>';
   if (key === "fury") return '<i class="fa-regular fa-face-angry" aria-hidden="true"></i>';
   return '<i class="fa-solid fa-dice" aria-hidden="true"></i>';
+}
+
+function shouldShowViciousOpportunist(message, state) {
+  try {
+    const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+    if (!liveMessage) return false;
+    if (liveMessage.getFlag?.(MODULE_ID, "viciousOpportunistUsed")) return false;
+    if (liveMessage.system?.isMiss || liveMessage.system?.isCritical) return false;
+    if (!isCheatActorForNHD(state?.sourceActor)) return false;
+    if (!getPrimaryDieFacesFromMessage(liveMessage)) return false;
+    const itemId = liveMessage?.flags?.nimble?.itemId;
+    const itemUuid = liveMessage?.flags?.nimble?.itemUuid;
+    if (!itemId && !itemUuid) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function viciousOpportunistControlHTML() {
+  return `
+    <div class="nhd-chat-control nhd-chat-control--vicious-opportunist">
+      <span class="nhd-chat-label">Vicious Opportunist</span>
+      <button type="button" class="nhd-chat-cycle nhd-chat-cycle--icon" data-vicious-opportunist="1" title="Use Vicious Opportunist: reroll this attack with the primary die set to its maximum value.">
+        <i class="fa-solid fa-user-secret" aria-hidden="true"></i>
+      </button>
+    </div>`;
 }
 
 function getExtraTooltip(extra, rolledEntry = null) {
@@ -322,18 +384,28 @@ function getBaseDamage(message, root) {
 }
 
 
-function buildPreviewModel(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null) {
+function buildPreviewModel(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0) {
   const ctx = getCurrentMessageDamageContext(message);
   const baseFull = Number(ctx?.full ?? baseDamage ?? 0) || 0;
   const baseDiceOnly = Number(ctx?.diceOnly ?? baseFull) || baseFull;
   const extraSummary = getExtraStateSummary(extraDamage);
-  const full = baseFull + extraSummary.total;
-  const diceOnly = baseDiceOnly + extraSummary.total;
+  const miscFlat = Number(miscFlatBonus ?? 0) || 0;
+  const miscDice = Number(miscDiceBonus ?? 0) || 0;
+  const useFlatArmorRule = getMonsterArmorRule() === "flat";
+  const activeMiscFlat = miscFlat;
+  const activeMiscDice = useFlatArmorRule ? 0 : miscDice;
+  const full = Math.max(0, baseFull + extraSummary.total + activeMiscFlat + activeMiscDice);
+  const diceOnly = baseDiceOnly + extraSummary.total + activeMiscDice;
   const isCrit = !!ctx?.isCrit;
+
+  const miscParts = [];
+  if (activeMiscFlat !== 0) miscParts.push(`${activeMiscFlat > 0 ? "+" : ""}${activeMiscFlat}${useFlatArmorRule ? " misc" : " flat"}`);
+  if (activeMiscDice !== 0) miscParts.push(`${activeMiscDice > 0 ? "+" : ""}${activeMiscDice} dice`);
 
   const model = {
     base: baseFull,
     extraDisplay: extraSummary.total > 0 ? extraSummary.display : "",
+    miscDisplay: miscParts.join(", "),
     subtraction: 0,
     result: full
   };
@@ -354,26 +426,9 @@ function buildPreviewModel(baseDamage, armorMode, resVulnMode = "normal", armorT
     ? "bypass"
     : armorMode;
 
-  let armorResult = full;
-  let effectiveArmorBucket = 0;
-  if (!isCrit) {
-    if (effectiveArmorMode === "bypass") {
-      armorResult = full;
-      effectiveArmorBucket = 0;
-    } else if (effectiveArmorMode === "down" || effectiveArmorMode === "reduced") {
-      armorResult = diceOnly;
-      effectiveArmorBucket = hasHeavy ? 1 : 0;
-    } else if (hasHeavy) {
-      armorResult = Math.ceil(diceOnly / 2);
-      effectiveArmorBucket = 2;
-    } else if (hasMedium) {
-      armorResult = diceOnly;
-      effectiveArmorBucket = 1;
-    } else {
-      armorResult = full;
-      effectiveArmorBucket = 0;
-    }
-  }
+  const armorApplied = applyMonsterArmorRule({ full, diceOnly, hasMedium, hasHeavy, effectiveArmorMode, isCrit });
+  const armorResult = armorApplied.result;
+  const effectiveArmorBucket = armorApplied.bucket;
 
   const armorSubtracted = Math.max(0, full - armorResult);
   model.subtraction = armorSubtracted;
@@ -382,27 +437,35 @@ function buildPreviewModel(baseDamage, armorMode, resVulnMode = "normal", armorT
   if (resVulnMode === "resistant") {
     modified = Math.ceil(armorResult / 2);
   } else if (resVulnMode === "vulnerable") {
-    if (isCrit) modified = armorResult;
-    else if (effectiveArmorBucket === 0) modified = armorResult * 2;
-    else modified = full;
+    if (effectiveArmorBucket === 0) {
+      modified = armorResult * 2;
+    } else {
+      modified = full;
+      // Vulnerability bypasses monster armor when armor is still in play,
+      // so the preview expression should not show a flat armor reduction
+      // that is no longer part of the final math.
+      model.subtraction = 0;
+    }
   }
 
   model.result = modified;
   return model;
 }
 
-function computePreview(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null) {
-  const model = buildPreviewModel(baseDamage, armorMode, resVulnMode, armorTypes, message, targetProfile, defendMode, extraDamage);
+function computePreview(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0) {
+  const model = buildPreviewModel(baseDamage, armorMode, resVulnMode, armorTypes, message, targetProfile, defendMode, extraDamage, miscFlatBonus, miscDiceBonus);
   const parts = [String(model.base)];
   if (model.extraDisplay) parts.push(`(+${model.extraDisplay})`);
+  if (model.miscDisplay) parts.push(`(${model.miscDisplay})`);
   if (model.subtraction > 0) parts.push(`(-${model.subtraction})`);
   return `Damage: ${parts.join(" ")} → ${model.result}`;
 }
 
-function renderPreviewHTML(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null) {
-  const model = buildPreviewModel(baseDamage, armorMode, resVulnMode, armorTypes, message, targetProfile, defendMode, extraDamage);
+function renderPreviewHTML(baseDamage, armorMode, resVulnMode = "normal", armorTypes = [], message = null, targetProfile = null, defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0) {
+  const model = buildPreviewModel(baseDamage, armorMode, resVulnMode, armorTypes, message, targetProfile, defendMode, extraDamage, miscFlatBonus, miscDiceBonus);
   const bits = [`<span class="nhd-chat-preview-value">${model.base}</span>`];
   if (model.extraDisplay) bits.push(`<span class="nhd-chat-preview-mod nhd-chat-preview-mod--positive">(+${foundry.utils.escapeHTML(model.extraDisplay)})</span>`);
+  if (model.miscDisplay) bits.push(`<span class="nhd-chat-preview-mod ${model.miscDisplay.startsWith("-") ? "nhd-chat-preview-mod--negative" : "nhd-chat-preview-mod--positive"}">(${foundry.utils.escapeHTML(model.miscDisplay)})</span>`);
   if (model.subtraction > 0) bits.push(`<span class="nhd-chat-preview-mod nhd-chat-preview-mod--negative">(-${model.subtraction})</span>`);
   return `
     <span class="nhd-chat-preview-label">Damage</span>
@@ -580,7 +643,7 @@ function refreshLiveContext(message, ctx) {
   const liveRoot = getLiveMessageRoot(message.id, ctx.root);
   if (!liveRoot) return ctx;
   const searchRoot = getEffectiveRoot(liveRoot);
-  if (isHealingCard(searchRoot)) {
+  if (hasApplyHealingButton(searchRoot)) {
     return {
       root: liveRoot,
       applyBtn: null
@@ -604,8 +667,13 @@ function schedulePostRenderRefresh(message, ctx, wrapper) {
   for (const delay of delays) {
     window.setTimeout(() => {
       const liveCtx = refreshLiveContext(message, ctx);
+      if (liveCtx.root) {
+        const liveSearchRoot = getEffectiveRoot(liveCtx.root);
+        removeDuplicateEnhancedWrappers(liveSearchRoot, wrapper);
+      }
       if (!wrapper.isConnected && liveCtx.applyBtn) {
         const liveSearchRoot = getEffectiveRoot(liveCtx.root);
+        removeDuplicateEnhancedWrappers(liveSearchRoot);
         const insertion = getActionInsertionPoint(liveSearchRoot, liveCtx.applyBtn) || { host: getProxyHost(liveSearchRoot) || liveSearchRoot, anchor: null, proxyMode: false };
         if (insertion.proxyMode) wrapper.classList.add('nhd-chat-enhanced--proxy');
         else wrapper.classList.remove('nhd-chat-enhanced--proxy');
@@ -638,10 +706,18 @@ function armorButtonTitle(mode, armorTypes = []) {
   return `Armor: ${armorModeTitle(mode)}\nLeft-click to cycle\nRight-click to reset.`;
 }
 
+function removeDuplicateEnhancedWrappers(searchRoot, keep = null) {
+  if (!(searchRoot instanceof HTMLElement)) return;
+  const wrappers = [...searchRoot.querySelectorAll(".nhd-chat-enhanced")];
+  for (const el of wrappers) {
+    if (keep && el === keep) continue;
+    el.remove();
+  }
+}
+
 function renderWrapper(message, ctx) {
   const searchRoot = getEffectiveRoot(ctx.root);
-  const existing = searchRoot.querySelector(".nhd-chat-enhanced");
-  if (existing) existing.remove();
+  removeDuplicateEnhancedWrappers(searchRoot);
 
   const armorCtx = getTargetArmorContext(ctx.root, getState(message.id).targetProfile);
   const wrapper = document.createElement("div");
@@ -649,6 +725,7 @@ function renderWrapper(message, ctx) {
   wrapper.dataset.messageId = message.id;
   wrapper.innerHTML = `
     <div class="nhd-chat-controls"></div>
+<div class="nhd-chat-misc-row" data-misc-row="1"></div>
     <div class="nhd-chat-preview"><span class="nhd-chat-preview-label">Damage</span><span class="nhd-chat-preview-expression">—</span></div>
   `;
 
@@ -665,6 +742,68 @@ function renderWrapper(message, ctx) {
   bindConditionRouting(message, ctx);
   bindApply(message, ctx);
   schedulePostRenderRefresh(message, ctx, wrapper);
+}
+
+
+function refreshPreviewOnly(message, ctx, wrapper, armorCtx = getTargetArmorContext(ctx.root, getState(message.id).targetProfile)) {
+  const state = getState(message.id);
+  const preview = wrapper?.querySelector?.(".nhd-chat-preview");
+  if (!preview) return;
+  const baseDamage = getBaseDamage(message, ctx.root);
+  const targetProfile = state.targetProfile;
+  preview.innerHTML = renderPreviewHTML(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage, state.miscFlatBonus, state.miscDiceBonus);
+  preview.setAttribute("aria-label", computePreview(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage, state.miscFlatBonus, state.miscDiceBonus));
+}
+
+function readMiscInput(input) {
+  const raw = Number(String(input?.value ?? "").trim());
+  return Number.isFinite(raw) ? Math.trunc(raw) : 0;
+}
+
+function resizeMiscInput(input) {
+  if (!input) return;
+  const text = String(input.value ?? "0");
+  const len = Math.max(1, text.length);
+  const width = Math.max(40, Math.min(92, (len * 9) + 24));
+  input.style.width = `${width}px`;
+}
+
+function renderMiscBonusControls(state) {
+  const flat = Number(state?.miscFlatBonus ?? 0) || 0;
+  const dice = Number(state?.miscDiceBonus ?? 0) || 0;
+  if (getMonsterArmorRule() === "flat") {
+    return `
+      <span class="nhd-chat-label">Misc Bonus</span>
+      <input type="number" class="nhd-chat-misc-input" data-misc-bonus="flat" step="1" value="${flat}" inputmode="numeric">
+    `;
+  }
+  return `
+    <span class="nhd-chat-label">Misc Bonus</span>
+    <span class="nhd-chat-misc-sublabel">Flat</span>
+    <input type="number" class="nhd-chat-misc-input" data-misc-bonus="flat" step="1" value="${flat}" inputmode="numeric">
+    <span class="nhd-chat-misc-sublabel">Dice</span>
+    <input type="number" class="nhd-chat-misc-input" data-misc-bonus="dice" step="1" value="${dice}" inputmode="numeric">
+  `;
+}
+
+function syncMiscStateFromInputs(message, wrapper) {
+  const state = getState(message.id);
+  const flatInput = wrapper?.querySelector?.('[data-misc-bonus="flat"]');
+  const diceInput = wrapper?.querySelector?.('[data-misc-bonus="dice"]');
+  state.miscFlatBonus = readMiscInput(flatInput);
+  state.miscDiceBonus = diceInput ? readMiscInput(diceInput) : 0;
+}
+
+function commitMiscBonuses(message, wrapper) {
+  const state = getState(message.id);
+  syncMiscStateFromInputs(message, wrapper);
+  try {
+    const liveMessage = game.messages?.get?.(message.id) ?? message;
+    const p1 = liveMessage?.setFlag?.(MODULE_ID, "miscFlatBonus", state.miscFlatBonus);
+    const p2 = liveMessage?.setFlag?.(MODULE_ID, "miscDiceBonus", state.miscDiceBonus);
+    if (p1?.catch) p1.catch(() => {});
+    if (p2?.catch) p2.catch(() => {});
+  } catch { /* ignore async flag failures */ }
 }
 
 function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(ctx.root, getState(message.id).targetProfile)) {
@@ -733,6 +872,10 @@ function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(
     }
   }
 
+  if (controls && shouldShowViciousOpportunist(message, state)) {
+    controls.insertAdjacentHTML("afterbegin", viciousOpportunistControlHTML());
+  }
+
   if (controls && sourceExtras.length) {
     const extraRows = sourceExtras.map((extra) => {
       const rolledEntry = state.extraDamage?.[extra.key] ?? null;
@@ -748,9 +891,16 @@ function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(
     controls.insertAdjacentHTML("beforeend", extraRows);
   }
 
+  const miscRow = wrapper.querySelector('[data-misc-row="1"]');
+  const activeMiscInput = document.activeElement?.closest?.('[data-misc-bonus]') ?? null;
+  if (miscRow && !activeMiscInput) {
+    miscRow.innerHTML = renderMiscBonusControls(state);
+  }
+  wrapper.querySelectorAll?.('[data-misc-bonus]')?.forEach?.((input) => resizeMiscInput(input));
+
   if (preview) {
-    preview.innerHTML = renderPreviewHTML(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage);
-    preview.setAttribute("aria-label", computePreview(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage));
+    preview.innerHTML = renderPreviewHTML(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage, state.miscFlatBonus, state.miscDiceBonus);
+    preview.setAttribute("aria-label", computePreview(baseDamage, state.armorMode, state.resVulnMode, armorCtx.armorTypes, message, targetProfile, state.defendMode, state.extraDamage, state.miscFlatBonus, state.miscDiceBonus));
   }
 }
 
@@ -784,11 +934,52 @@ function bindWrapper(message, ctx, wrapper) {
   if (wrapper.dataset.bound === "1") return;
   wrapper.dataset.bound = "1";
 
+  wrapper.addEventListener("input", (event) => {
+    const input = event.target?.closest?.('[data-misc-bonus]');
+    if (!input) return;
+    event.stopPropagation();
+    syncMiscStateFromInputs(message, wrapper);
+    resizeMiscInput(input);
+    refreshPreviewOnly(message, refreshLiveContext(message, ctx), wrapper);
+  });
+
+  wrapper.addEventListener("change", (event) => {
+    const input = event.target?.closest?.('[data-misc-bonus]');
+    if (!input) return;
+    event.stopPropagation();
+    commitMiscBonuses(message, wrapper);
+    resizeMiscInput(input);
+    refreshPreviewOnly(message, refreshLiveContext(message, ctx), wrapper);
+  });
+
+  wrapper.addEventListener("blur", (event) => {
+    const input = event.target?.closest?.('[data-misc-bonus]');
+    if (!input) return;
+    commitMiscBonuses(message, wrapper);
+    resizeMiscInput(input);
+    refreshPreviewOnly(message, refreshLiveContext(message, ctx), wrapper);
+  }, true);
+
+  wrapper.addEventListener("keydown", (event) => {
+    const input = event.target?.closest?.('[data-misc-bonus]');
+    if (!input) return;
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitMiscBonuses(message, wrapper);
+      input.blur();
+    }
+  }, true);
+
   wrapper.addEventListener("click", (event) => {
-    const btn = event.target.closest('[data-cycle],[data-extra]');
+    const btn = event.target.closest('[data-cycle],[data-extra],[data-vicious-opportunist]');
     if (!btn) return;
     event.preventDefault();
     const state = getState(message.id);
+    if (btn.dataset.viciousOpportunist === "1") {
+      useViciousOpportunistFromMessage(game.messages?.get?.(message.id) ?? message, { deleteOriginal: true });
+      return;
+    }
     const cycleType = String(btn.dataset.cycle || "");
     if (cycleType === "armor") {
       const liveCtx = refreshLiveContext(message, ctx);
@@ -824,7 +1015,7 @@ function bindWrapper(message, ctx, wrapper) {
   });
 
   wrapper.addEventListener("contextmenu", (event) => {
-    const btn = event.target.closest('[data-cycle],[data-extra]');
+    const btn = event.target.closest('[data-cycle],[data-extra],[data-vicious-opportunist]');
     if (!btn) return;
     event.preventDefault();
     const state = getState(message.id);
@@ -983,47 +1174,6 @@ function bindConditionRouting(message, ctx) {
   }, true);
 }
 
-
-async function cleanupDyingAfterHealingCard(message) {
-  try {
-    const liveMessage = game.messages?.get?.(message.id) ?? message;
-    const tokenDocs = await getCardTargetTokenDocs(liveMessage);
-    const tokenUuids = [];
-    for (const t of tokenDocs) {
-      const actor = t?.actor;
-      const isPC = !!(actor?.hasPlayerOwner || actor?.type === "character" || actor?.type === "pc");
-      const hp = Number(foundry.utils.getProperty(actor, "system.attributes.hp.value") ?? 0) || 0;
-      const tokenUuid = t?.document?.uuid ?? t?.uuid ?? null;
-      if (isPC && hp > 0 && tokenUuid) tokenUuids.push(tokenUuid);
-    }
-    if (tokenUuids.length) {
-      await requestToggleStatus({ tokenUuids, statusKey: "dying", action: "remove", active: false });
-    }
-  } catch (err) {
-    console.error(`${MODULE_ID} | healing status cleanup failed`, err);
-  }
-}
-
-function bindHealingStatusCleanup(message, root) {
-  const searchRoot = getEffectiveRoot(root);
-  if (!(searchRoot instanceof HTMLElement)) return;
-  const buttons = [...searchRoot.querySelectorAll("button")].filter((btn) => {
-    const text = btn.textContent?.trim().toLowerCase() || "";
-    const title = btn.getAttribute("title")?.trim().toLowerCase() || "";
-    const aria = btn.getAttribute("aria-label")?.trim().toLowerCase() || "";
-    return text === "apply healing" || text === "undo healing" || title === "undo healing" || aria === "undo healing";
-  });
-  for (const btn of buttons) {
-    if (btn.dataset.nhdHealingBound === "1") continue;
-    btn.dataset.nhdHealingBound = "1";
-    btn.addEventListener("click", () => {
-      for (const delay of [0, 50, 150, 400]) {
-        window.setTimeout(() => { cleanupDyingAfterHealingCard(message); }, delay);
-      }
-    }, true);
-  }
-}
-
 function bindApply(message, ctx) {
   if (ctx.applyBtn.dataset.nhdBound === "1") return;
   ctx.applyBtn.dataset.nhdBound = "1";
@@ -1051,6 +1201,8 @@ function bindApply(message, ctx) {
       resVulnMode: state.resVulnMode,
       defendMode: state.defendMode,
       extraDamage: state.extraDamage,
+      miscFlatBonus: state.miscFlatBonus,
+      miscDiceBonus: state.miscDiceBonus,
       showVerificationCard
     });
   }, true);
@@ -1059,8 +1211,6 @@ function bindApply(message, ctx) {
 Hooks.on("renderChatMessage", (message, html) => {
   try {
     if (!game.settings.get(MODULE_ID, "enable-enhanced-chat-cards")) return;
-    const root = html?.[0] ?? html;
-    if (root instanceof HTMLElement) bindHealingStatusCleanup(message, root);
     const ctx = detectContext(message, html);
     if (!ctx) return;
     renderWrapper(message, ctx);

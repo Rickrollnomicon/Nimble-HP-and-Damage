@@ -9,6 +9,31 @@ export const error = (...args) => console.error("nimble-hp-and-damage |", ...arg
 
 export const setting = (key) => game.settings.get("nimble-hp-and-damage", key);
 
+function getMonsterArmorRule() {
+  try {
+    return game.settings.get(MODULE_ID, "monster-armor-rule") === "flat" ? "flat" : "original";
+  } catch {
+    return "original";
+  }
+}
+
+function applyMonsterArmorRule({ full = 0, diceOnly = 0, armorMode = 0, isCrit = false } = {}) {
+  const baseFull = Math.max(0, Number(full) || 0);
+  const baseDiceOnly = Math.max(0, Number(diceOnly) || 0);
+  const mode = Number(armorMode ?? 0) || 0;
+  if (isCrit || mode <= 0) return baseFull;
+
+  if (getMonsterArmorRule() === "flat") {
+    if (mode === 1) return Math.max(0, baseFull - 5);
+    if (mode === 2) return Math.max(0, baseFull - 10);
+    return baseFull;
+  }
+
+  if (mode === 1) return baseDiceOnly;
+  if (mode === 2) return Math.ceil(baseDiceOnly / 2);
+  return baseFull;
+}
+
 let _fhpCiDialog = null; // currently open Context Inspector dialog
 
 // ---------------- Nimble resource paths (locked) ----------------
@@ -59,9 +84,6 @@ function _captureUndoSnapshot(actor) {
       defeated: hasStatus("defeated"),
       dead: hasStatus("dead"),
       dying: hasStatus("dying")
-    },
-    wounds: {
-      value: Number(foundry.utils.getProperty(actor, `system.attributes.wounds.value`) ?? 0) || 0
     }
   };
 }
@@ -78,15 +100,12 @@ async function _restoreUndoSnapshot(snapshot) {
   actor = actor || game.actors?.get?.(snapshot.actorId) || null;
   if (!actor) return false;
 
-  const actorUpdate = {
+  await actor.update({
     [`system.${HP_VALUE_PATH}`]: Number(snapshot?.hp?.value ?? 0) || 0,
     [`system.${HP_TEMP_PATH}`]: Number(snapshot?.hp?.temp ?? 0) || 0,
     [`system.${HP_MAX_PATH}`]: Number(snapshot?.hp?.max ?? 0) || 0,
     [`system.${HP_TEMPMAX_PATH}`]: Number(snapshot?.hp?.tempmax ?? 0) || 0
-  };
-  if (snapshot?.wounds?.value !== undefined) actorUpdate[`system.attributes.wounds.value`] = Number(snapshot?.wounds?.value ?? 0) || 0;
-
-  await actor.update(actorUpdate);
+  });
 
   const app = game.FloatingHP?.app;
   try {
@@ -433,7 +452,7 @@ function _armorStateLabel(mode) {
   }
 }
 
-export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], baseContext = null, armorOverrideMode = "normal", resVulnMode = "normal", defendMode = 0, extraDamage = null, showVerificationCard = false } = {}) {
+export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], baseContext = null, armorOverrideMode = "normal", resVulnMode = "normal", defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0, showVerificationCard = false } = {}) {
   const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
   const tokens = (Array.isArray(tokenDocs) ? tokenDocs : []).filter(t => t?.actor && (t?.document?.uuid || t?.uuid));
   if (!tokens.length) {
@@ -446,8 +465,10 @@ export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], bas
   const rawBaseDiceOnly = Number(base?.diceOnly ?? rawBaseFull) || 0;
   const extraEntries = extraDamage && typeof extraDamage === "object" ? Object.values(extraDamage).filter(v => v && typeof v === "object") : [];
   const extraDiceOnly = extraEntries.reduce((sum, entry) => sum + (Number(entry?.diceOnly ?? entry?.total ?? 0) || 0), 0);
-  const baseFull = rawBaseFull + extraDiceOnly;
-  const baseDiceOnly = rawBaseDiceOnly + extraDiceOnly;
+  const miscFlat = Number(miscFlatBonus ?? base?.miscFlatBonus ?? 0) || 0;
+  const miscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(miscDiceBonus ?? base?.miscDiceBonus ?? 0) || 0);
+  const baseFull = Math.max(0, rawBaseFull + extraDiceOnly + miscFlat + miscDice);
+  const baseDiceOnly = rawBaseDiceOnly + extraDiceOnly + miscDice;
   const isCrit = !!base?.isCrit;
   if (!Number.isFinite(baseFull) || baseFull <= 0) {
     ui.notifications?.info?.("No damage to apply.");
@@ -475,20 +496,15 @@ export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], bas
 
     let appliedDelta = baseFull;
     let bucketLabel = null;
-    let afterArmor = baseFull;
-    if (!actorIsPc && !isCrit) {
-      if (effectiveArmorMode === 1) afterArmor = baseDiceOnly;
-      else if (effectiveArmorMode === 2) afterArmor = Math.ceil(baseDiceOnly / 2);
-      else afterArmor = baseFull;
-    }
+    const afterArmor = (!actorIsPc)
+      ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode: effectiveArmorMode, isCrit })
+      : baseFull;
 
     if (!actorIsPc) {
       if (resVulnMode === "resistant") {
         appliedDelta = Math.ceil(afterArmor / 2);
       } else if (resVulnMode === "vulnerable") {
-        if (isCrit) {
-          appliedDelta = afterArmor;
-        } else if (effectiveArmorMode === 0) {
+        if (effectiveArmorMode === 0) {
           appliedDelta = afterArmor * 2;
           bucketLabel = "Vulnerable (Double Damage)";
         } else {
@@ -528,7 +544,7 @@ export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], bas
       // Use the smart/default HP application path so Temp HP is consumed
       // first, matching the floating HUD behavior.
       target: undefined,
-      note: `Enhanced Chat Card (${String(armorOverrideMode)}, ${String(resVulnMode)}, defend=${String(activeDefendMode)})`,
+      note: `Enhanced Chat Card (${String(armorOverrideMode)}, ${String(resVulnMode)}, defend=${String(activeDefendMode)}, miscFlat=${String(miscFlat)}, miscDice=${String(miscDice)})`,
       chatCard: false
     });
   }
@@ -839,14 +855,18 @@ function _computeAutoFillFromRollMessage(msg) {
     // If DOM parsing succeeded, use it.
     if (domFound && Number.isFinite(domTotal) && domTotal !== 0) {
       const conditions = _extractConditionsFromRenderedMessage(msg.id);
+      const misc = Number(msg?.getFlag?.(MODULE_ID, "miscFlatBonus") ?? msg?.flags?.[MODULE_ID]?.miscFlatBonus ?? 0) || 0;
+      const miscDice = Number(msg?.getFlag?.(MODULE_ID, "miscDiceBonus") ?? msg?.flags?.[MODULE_ID]?.miscDiceBonus ?? 0) || 0;
       return {
-        amount: domTotal,
-        full: domTotal,
+        amount: Math.max(0, domTotal),
+        full: Math.max(0, domTotal),
         diceOnly: Number.isFinite(domDice) ? domDice : 0,
         armorMode: null,
         armorMixed: false,
         isCrit,
         conditions,
+        miscFlatBonus: misc,
+        miscDiceBonus: miscDice,
         messageId: msg.id,
         authorId: _getMessageAuthorId(msg),
         speakerActorId: _getMessageSpeakerActorId(msg),
@@ -903,15 +923,20 @@ function _computeAutoFillFromRollMessage(msg) {
     const amount = Number.isFinite(full) ? full : 0;
     if (!amount) return null;
     const conditions = _extractConditionsFromRenderedMessage(msg.id);
+    const misc = Number(msg?.getFlag?.(MODULE_ID, "miscFlatBonus") ?? msg?.flags?.[MODULE_ID]?.miscFlatBonus ?? 0) || 0;
+    const miscDice = Number(msg?.getFlag?.(MODULE_ID, "miscDiceBonus") ?? msg?.flags?.[MODULE_ID]?.miscDiceBonus ?? 0) || 0;
+    const rawFull = Math.max(0, Number.isFinite(full) ? full : amount);
 
     return {
-      amount,
-      full: Number.isFinite(full) ? full : amount,
+      amount: rawFull,
+      full: rawFull,
       diceOnly: Number.isFinite(diceOnly) ? diceOnly : 0,
       armorMode,
       armorMixed,
       isCrit,
       conditions,
+      miscFlatBonus: misc,
+      miscDiceBonus: miscDice,
       messageId: msg.id,
       authorId: _getMessageAuthorId(msg),
       speakerActorId: _getMessageSpeakerActorId(msg),
@@ -937,6 +962,7 @@ function _refreshAutoFillCacheFromChat() {
       messageId: null,
       authorId: null,
       speakerActorId: null,
+      miscFlatBonus: 0, miscDiceBonus: 0,
       ts: 0
     };
 
@@ -954,8 +980,11 @@ function _refreshAutoFillCacheFromChat() {
         if (k === "extra-roll-card") continue;
       } catch { /* ignore */ }
       try {
-        // Never treat this module's own output messages as a roll source.
-        if (m?.flags?.[MODULE_ID]) continue;
+        // Never treat this module's own output messages as a roll source,
+        // but do allow real Nimble attack cards that carry module metadata
+        // such as the Vicious Opportunist "already used" flag.
+        const moduleKind = m?.flags?.[MODULE_ID]?.kind;
+        if (moduleKind) continue;
       } catch { /* ignore */ }
       if (!_messageBelongsToCurrentUser(m)) continue;
 
@@ -993,7 +1022,9 @@ function _getAutoFillInfo() {
     isCrit: !!_lastChatAutoFill.isCrit,
     armorMode: (_lastChatAutoFill.armorMode ?? null),
     armorMixed: !!_lastChatAutoFill.armorMixed,
-    conditions: Array.isArray(_lastChatAutoFill.conditions) ? _lastChatAutoFill.conditions : []
+    conditions: Array.isArray(_lastChatAutoFill.conditions) ? _lastChatAutoFill.conditions : [],
+    miscFlatBonus: Number(_lastChatAutoFill.miscFlatBonus ?? 0) || 0,
+    miscDiceBonus: Number(_lastChatAutoFill.miscDiceBonus ?? 0) || 0
   };
 }
 
@@ -1486,25 +1517,26 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
         // compute a best-effort preview: if all targets resolve to the same applied number, show it; otherwise "mixed"
         try {
           const extraDice = this._getTargetExtraDiceTotal?.() ?? 0;
-          const baseFull = baseRoll ? (Number(baseRoll.full ?? 0) || 0) + extraDice : amt;
-          const baseDiceOnly = baseRoll ? (((Number(baseRoll.diceOnly ?? 0) || 0) || (Number(baseRoll.full ?? 0) || 0))) + extraDice : amt;
+          const isRollDerived = !!baseRoll;
+          const miscDice = (isRollDerived && getMonsterArmorRule() !== "flat") ? (Number(baseRoll.miscDiceBonus ?? 0) || 0) : 0;
+          const baseFull = isRollDerived ? (Number(baseRoll.full ?? 0) || 0) + (Number(baseRoll.miscFlatBonus ?? 0) || 0) + miscDice + extraDice : amt;
+          const baseDiceOnly = isRollDerived ? (((Number(baseRoll.diceOnly ?? 0) || 0) || (Number(baseRoll.full ?? 0) || 0))) + miscDice + extraDice : amt;
 
           const vals = [];
           for (const t of tokens) {
             const a = t?.actor;
             const armorMode = this._getEffectiveArmorModeForActor?.(a) ?? (Number(this._detectArmorModeForActor?.(a) ?? this._tgtArmorMode ?? 0) || 0);
-            let afterArmor = baseFull;
-            // Crit bypasses armor.
-            if (!isCrit) {
-              if (armorMode === 1) afterArmor = baseDiceOnly;
-              else if (armorMode === 2) afterArmor = Math.ceil(baseDiceOnly / 2);
-              else afterArmor = baseFull;
-            }
+            // Manual HUD values are applied exactly as entered. Armor math only applies
+            // to values explicitly pulled from a chat card/roll context.
+            const afterArmor = isRollDerived
+              ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit })
+              : baseFull;
 
-            // Transforms (mutually exclusive): Resistant applies even on crit; Vulnerable has no additional effect on crit.
+            // Transforms (mutually exclusive): Resistant applies after armor/crit;
+            // Vulnerable bypasses armor when armor is actually in play, otherwise doubles damage.
             let v = afterArmor;
             if (mode === "resistant") v = Math.ceil(afterArmor / 2);
-            else if (mode === "vulnerable") v = isCrit ? afterArmor : ((armorMode === 0) ? (afterArmor * 2) : baseFull);
+            else if (mode === "vulnerable") v = (isRollDerived && armorMode > 0 && !isCrit) ? baseFull : (afterArmor * 2);
 
             // Defend is a flat reduction after all other math (single-target PC only).
             if (singlePC?.actor && a?.id === singlePC.actor.id && Number.isFinite(defendPotential) && defendPotential > 0) {
@@ -1528,7 +1560,7 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
           }
         },
         {
-          label: `Vulnerable${previewFor("vulnerable")}${isCrit ? " (no extra effect on Crit)" : ""}`,
+          label: `Vulnerable${previewFor("vulnerable")}`,
           onClick: async () => {
             const didApply = await this.changeHPForTargets(amt, data.target, { kind: "damage", mode: "vulnerable" });
             if (didApply) this._resetHudAfterApplySuccess();
@@ -1663,10 +1695,20 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this._pullLatestChatRollIntoInput("#fhp-tgt-hp");
     });
 
-    // If the user types in the Targeted input, don't overwrite it with auto-fill.
+    // If the user types in the Targeted input, do not keep treating the value as
+    // roll-derived.  This is important for playtest flat armor: manual HUD values
+    // should be applied exactly as entered, while chat-card pulls keep the full
+    // base-roll context needed for armor/res/vuln recalculation.
     html.find("#fhp-tgt-hp").on("input", (ev) => {
       try {
         ev.target.dataset.fhpAutofill = "0";
+        // Only clear the roll context for real user typing. Some feature buttons
+        // update this field programmatically and intentionally preserve context.
+        if (ev?.originalEvent?.isTrusted) {
+          this._tgtBaseRoll = null;
+          this._tgtBaseMsgId = null;
+          try { this._resetTargetExtras?.(); } catch { /* ignore */ }
+        }
       } catch { /* ignore */ }
     });
 
@@ -2222,14 +2264,16 @@ Right-click to reset`;
       return null;
     }
 
-    const baseFull = Number(base.full ?? 0) || 0;
-    const baseDiceOnly = Number(base.diceOnly ?? 0) || 0;
+    const rawBaseFull = Number(base.full ?? 0) || 0;
+    const baseMiscFlat = Number(base.miscFlatBonus ?? 0) || 0;
+    const baseMiscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(base.miscDiceBonus ?? 0) || 0);
+    const rawBaseDiceOnly = Number(base.diceOnly ?? 0) || 0;
     const isCrit = !!base.isCrit;
 
     const extraDice = this._getTargetExtraDiceTotal?.() ?? 0;
 
-    const full = baseFull + extraDice;
-    const diceOnly = (baseDiceOnly || baseFull) + extraDice;
+    const full = rawBaseFull + baseMiscFlat + baseMiscDice + extraDice;
+    const diceOnly = (rawBaseDiceOnly || rawBaseFull) + baseMiscDice + extraDice;
 
     const tgtInfo = this._getTargetHeaderInfo();
     const onlyPCs = !!tgtInfo.onlyPCs;
@@ -2267,10 +2311,7 @@ Right-click to reset`;
     });
     const uniqArmor = Array.from(new Set(armorVals));
     const mode = uniqArmor.length === 1 ? uniqArmor[0] : null;
-    let out = full;
-    if (mode === 1) out = diceOnly;
-    else if (mode === 2) out = Math.ceil(diceOnly / 2);
-    else out = full;
+    let out = applyMonsterArmorRule({ full, diceOnly, armorMode: mode ?? 0, isCrit });
 
     // Defend applies as a flat reduction after armor math, single-PC only.
     if (singlePC?.actor) {
@@ -2513,12 +2554,49 @@ async _postExtraRollCard({ roll, attackerActor, label, formula }) {
     this._applyArmorModeToTargetedInput();
   }
 
+
+  _canUseViciousOpportunistTargeted(attacker) {
+    try {
+      if (!isCheatActorForNHD(attacker)) return false;
+      const msgId = String(this._tgtBaseRoll?.messageId ?? "");
+      if (!msgId) return false;
+      const message = game.messages?.get?.(msgId);
+      if (!message) return false;
+      if (message.getFlag?.(MODULE_ID, "viciousOpportunistUsed")) return false;
+      if (message.system?.isMiss || message.system?.isCritical || this._tgtBaseRoll?.isCrit) return false;
+      if (!getPrimaryDieFacesFromMessage(message)) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async _useViciousOpportunistTargeted() {
+    try {
+      const msgId = String(this._tgtBaseRoll?.messageId ?? "");
+      const message = msgId ? game.messages?.get?.(msgId) : null;
+      if (!message) {
+        ui.notifications?.warn?.("Pull a normal-hit attack card before using Vicious Opportunist.");
+        return;
+      }
+      await useViciousOpportunistFromMessage(message, { deleteOriginal: true });
+      this._tgtBaseRoll = null;
+      this._tgtBaseMsgId = null;
+      this._clearTargetExtras?.();
+      this._applyExtrasAndRefreshTargetedInput?.();
+    } catch (e) {
+      console.error(`${MODULE_ID} | Vicious Opportunist failed`, e);
+      ui.notifications?.error?.("Failed to use Vicious Opportunist.");
+    }
+  }
+
   async _openTargetExtrasDialog() {
     const attacker = this._getAttackerActorForExtras();
     const extras = this._getAvailableTargetExtras(attacker);
 
     const hasFury = extras.some(ex => ex && ex.key === "fury");
     const baseExtras = extras.filter(ex => ex && ex.key !== "fury");
+    const hasViciousOpportunist = this._canUseViciousOpportunistTargeted(attacker);
 
     // sync Fury into preview on open
 if (hasFury) {
@@ -2547,12 +2625,22 @@ try {
   } catch (_e) {}
 }
 
-    if (!baseExtras.length && !hasFury) {
+    if (!baseExtras.length && !hasFury && !hasViciousOpportunist) {
       ui.notifications?.info?.("No extra damage features detected.");
       return;
     }
 
     // Build dialog content (match the HUD styling; keep the layout simple)
+    const viciousRow = hasViciousOpportunist ? `
+      <div class="fhp-ex-row" data-key="vicious-opportunist">
+        <div class="fhp-ex-meta">
+          <div class="fhp-ex-title">Vicious Opportunist</div>
+          <div class="fhp-ex-sub">Reroll the pulled attack with the primary die set to maximum.</div>
+        </div>
+        <div class="fhp-ex-actions">
+          <button type="button" class="fhp-ex-vicious fhp-ex-roll-btn" data-action="vicious-opportunist">Use</button>
+        </div>
+      </div>` : "";
     const rows = baseExtras.map(ex => {
       const current = Number(this._tgtExtras?.[ex.key]?.total ?? 0) || 0;
       const btnLabel = current > 0 ? "Re-roll" : "Roll";
@@ -2576,9 +2664,10 @@ if (hasFury) {
 
 const content = String(`
       <div class="fhp-extras-wrap">
+        ${viciousRow}
         ${rows}
         ${furySectionHtml}
-        ${(!hasFury || baseExtras.length) ? `<div class="fhp-ex-footer">
+        ${(!hasFury || baseExtras.length || hasViciousOpportunist) ? `<div class="fhp-ex-footer">
           <button type="button" class="fhp-ex-close fhp-ex-roll-btn">Close</button>
         </div>` : ``}
       </div>
@@ -2604,6 +2693,17 @@ const content = String(`
       buttons: {},
       default: "",
       render: (html) => {
+
+html.find('[data-action="vicious-opportunist"]').off("click").on("click", async (ev) => {
+  ev.preventDefault();
+  try {
+    dlg.close();
+    await this._useViciousOpportunistTargeted();
+  } catch (e) {
+    console.error(`${MODULE_ID} | Vicious Opportunist click failed`, e);
+    ui.notifications?.error?.("Failed to use Vicious Opportunist.");
+  }
+});
 
 // Fury Dice handlers (inline) - isolated from generic extra roll buttons
 if (hasFury) {
@@ -2901,7 +3001,7 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
             // into the Targeted textbox, treat the base as 0 so we don't accidentally
             // add to a stale auto-fill cache value.
             if (!this._tgtBaseRoll) {
-              this._tgtBaseRoll = { full: 0, diceOnly: 0, isCrit: false };
+              this._tgtBaseRoll = { full: 0, diceOnly: 0, isCrit: false, miscFlatBonus: 0 };
             }
 
             const roll = await (new Roll(ex.formula)).evaluate({ async: true });
@@ -3034,29 +3134,27 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
         if (!Number.isFinite(amt) || amt === 0) continue;
 
         const isCrit = !!(baseRoll?.isCrit);
-        const baseFull = baseRoll ? (Number(baseRoll.full ?? 0) || 0) + extraDice : amt;
-        const baseDiceOnly = baseRoll ? ((Number(baseRoll.diceOnly ?? 0) || 0) || (Number(baseRoll.full ?? 0) || 0)) + extraDice : amt;
+        const isRollDerived = !!baseRoll;
+        const miscDice = (isRollDerived && getMonsterArmorRule() !== "flat") ? (Number(baseRoll.miscDiceBonus ?? 0) || 0) : 0;
+        const baseFull = isRollDerived ? (Number(baseRoll.full ?? 0) || 0) + (Number(baseRoll.miscFlatBonus ?? 0) || 0) + miscDice + extraDice : amt;
+        const baseDiceOnly = isRollDerived ? ((Number(baseRoll.diceOnly ?? 0) || 0) || (Number(baseRoll.full ?? 0) || 0)) + miscDice + extraDice : amt;
 
         armorMode = getArmorMode(a);
 
-        // Armor application
-        let afterArmor = baseFull;
-        if (!isCrit) {
-          if (armorMode === 1) afterArmor = baseDiceOnly;
-          else if (armorMode === 2) afterArmor = Math.ceil(baseDiceOnly / 2);
-          else afterArmor = baseFull;
-        }
+        // Armor application. Manual HUD values must apply exactly as entered;
+        // armor math only applies to chat-card-derived roll context.
+        const afterArmor = isRollDerived
+          ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit })
+          : baseFull;
 
         // Transforms (mutually exclusive)
         // - Crit bypasses armor.
         // - Resistant always halves after armor/crit (round up).
-        // - Vulnerable has no additional effect on crit.
+        // - Vulnerable bypasses armor when armor is actually in play, otherwise doubles damage.
         if (mode === "resistant") {
           appliedDelta = Math.ceil(afterArmor / 2);
         } else if (mode === "vulnerable") {
-          if (isCrit) appliedDelta = afterArmor;
-          else if (armorMode === 0) appliedDelta = afterArmor * 2;
-          else appliedDelta = baseFull; // bypass armor like crit
+          appliedDelta = (isRollDerived && armorMode > 0 && !isCrit) ? baseFull : (afterArmor * 2);
         } else {
           appliedDelta = afterArmor;
         }
@@ -3260,8 +3358,9 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
 
     if (this._tgtBaseRoll) {
       msgId = String(this._tgtBaseRoll.messageId ?? "");
-      baseFull = (Number(this._tgtBaseRoll.full ?? 0) || 0) + extraDice;
-      baseDiceOnly = (((Number(this._tgtBaseRoll.diceOnly ?? 0) || 0) || (Number(this._tgtBaseRoll.full ?? 0) || 0))) + extraDice;
+      const miscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(this._tgtBaseRoll.miscDiceBonus ?? 0) || 0);
+      baseFull = (Number(this._tgtBaseRoll.full ?? 0) || 0) + (Number(this._tgtBaseRoll.miscFlatBonus ?? 0) || 0) + miscDice + extraDice;
+      baseDiceOnly = (((Number(this._tgtBaseRoll.diceOnly ?? 0) || 0) || (Number(this._tgtBaseRoll.full ?? 0) || 0))) + miscDice + extraDice;
       isCrit = !!this._tgtBaseRoll.isCrit;
       conditions = Array.isArray(this._tgtBaseRoll.conditions) ? this._tgtBaseRoll.conditions : [];
       cacheSource = "Targeted base roll";
@@ -3780,7 +3879,8 @@ this.color = `rgba(${Math.round(r * darken)},${Math.round(g * darken)},${Math.ro
       const wasAuto = (inputEl.dataset?.fhpAutofill === "1");
       const lastAutoVal = String(inputEl.dataset?.fhpAutofillValue ?? "");
       const lastMsgId = String(inputEl.dataset?.fhpAutofillMsgId ?? "");
-      const nextVal = String(amt);
+      const infoMiscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(info.miscDiceBonus ?? 0) || 0);
+      const nextVal = String(Math.max(0, (Number(amt) || 0) + (Number(info.miscFlatBonus ?? 0) || 0) + infoMiscDice));
 
       // Only push on a *new* roll message (or if the field is empty and has never been auto-filled).
       const isNewRollForField = (msgId && msgId !== lastMsgId);
@@ -3815,7 +3915,8 @@ this.color = `rgba(${Math.round(r * darken)},${Math.round(g * darken)},${Math.ro
       if (!el) return;
 
       // For Targeted input, apply the current armor toggle (unless crit / only-PC targets).
-      let nextVal = Number(info.amount);
+      const infoMiscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(info.miscDiceBonus ?? 0) || 0);
+      let nextVal = Math.max(0, (Number(info.amount) || 0) + (Number(info.miscFlatBonus ?? 0) || 0) + infoMiscDice);
       if (selector === "#fhp-tgt-hp") {
         // If this is a new source roll, reset any extra-damage components.
         const newMsgId = String(info.messageId ?? "");
@@ -3837,7 +3938,9 @@ this.color = `rgba(${Math.round(r * darken)},${Math.round(g * darken)},${Math.ro
           full: Number(info.full ?? info.amount ?? 0) || 0,
           diceOnly: Number(info.diceOnly ?? 0) || 0,
           isCrit: !!info.isCrit,
-          conditions: Array.isArray(info.conditions) ? info.conditions : []
+          conditions: Array.isArray(info.conditions) ? info.conditions : [],
+          miscFlatBonus: Number(info.miscFlatBonus ?? 0) || 0,
+          miscDiceBonus: Number(info.miscDiceBonus ?? 0) || 0
         };
         try { this._renderTargetedConditions(); } catch { /* ignore */ }
         const computed = this._computeTargetedValueFromLastRoll();
@@ -4421,6 +4524,141 @@ Hooks.on("getSceneControlButtons", (controls) => {
     }
   };
 });
+
+
+export function isCheatActorForNHD(actor) {
+  try {
+    if (!actor) return false;
+    const app = game?.FloatingHP?.app;
+    if (app?._getStartingClassIdentifier) {
+      const id = String(app._getStartingClassIdentifier(actor) ?? "").toLowerCase().trim();
+      if (id === "the-cheat" || id === "cheat") return true;
+    }
+    const starting = String(foundry.utils.getProperty(actor, "system.details.startingClass") ?? foundry.utils.getProperty(actor, "system.startingClass") ?? "").toLowerCase().trim();
+    if (starting === "the-cheat" || starting === "cheat") return true;
+    return (actor?.items ?? []).some(it => {
+      const identifier = String(foundry.utils.getProperty(it, "system.identifier") ?? "").toLowerCase().trim();
+      const name = String(it?.name ?? "").toLowerCase().trim();
+      return identifier === "the-cheat" || identifier === "cheat" || name === "cheat" || name === "the cheat";
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function getPrimaryDieFacesFromMessage(message) {
+  try {
+    const rolls = Array.isArray(message?.rolls) ? message.rolls : [];
+    for (const roll of rolls) {
+      const faces = Number(roll?.primaryDie?.faces);
+      if (Number.isFinite(faces) && faces > 0) return faces;
+      const terms = Array.isArray(roll?.terms) ? roll.terms : [];
+      const primary = terms.find(t => String(t?.options?.flavor ?? "").toLowerCase().includes("primary") && Number(t?.faces) > 0)
+        ?? terms.find(t => Number(t?.faces) > 0);
+      const f = Number(primary?.faces);
+      if (Number.isFinite(f) && f > 0) return f;
+    }
+  } catch {}
+  return 0;
+}
+
+async function _targetTokenUuidsForMessage(message) {
+  const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+  const targetSources = [
+    liveMessage?.reactive?.system?.targets,
+    liveMessage?.system?.targets,
+    liveMessage?._source?.system?.targets,
+    liveMessage?.flags?.nimble?.targets
+  ];
+  let uuids = [];
+  for (const src of targetSources) {
+    if (!Array.isArray(src) || !src.length) continue;
+    uuids = src.map(t => typeof t === "string" ? t : t?.uuid ?? t?.tokenUuid ?? t?.token?.uuid ?? null).filter(u => typeof u === "string" && u.length);
+    if (uuids.length) break;
+  }
+  return uuids;
+}
+
+async function _withTemporaryTargets(tokenUuids, fn) {
+  const previous = Array.from(game.user?.targets ?? []);
+  const docs = [];
+  for (const uuid of tokenUuids || []) {
+    try {
+      const doc = await fromUuid(uuid);
+      const obj = doc?.object ?? canvas?.tokens?.get?.(doc?.id) ?? null;
+      if (obj?.setTarget) docs.push(obj);
+    } catch {}
+  }
+  try {
+    if (docs.length) {
+      try { game.user?.targets?.forEach(t => t?.setTarget?.(false, { user: game.user, releaseOthers: false, groupSelection: true })); } catch {}
+      for (const tok of docs) {
+        try { tok.setTarget(true, { user: game.user, releaseOthers: false, groupSelection: true }); } catch {}
+      }
+    }
+    return await fn();
+  } finally {
+    if (docs.length) {
+      try { game.user?.targets?.forEach(t => t?.setTarget?.(false, { user: game.user, releaseOthers: false, groupSelection: true })); } catch {}
+      for (const tok of previous) {
+        try { tok?.setTarget?.(true, { user: game.user, releaseOthers: false, groupSelection: true }); } catch {}
+      }
+    }
+  }
+}
+
+export async function useViciousOpportunistFromMessage(message, { deleteOriginal = true } = {}) {
+  const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+  if (!liveMessage) return null;
+  if (liveMessage.getFlag?.(MODULE_ID, "viciousOpportunistUsed")) {
+    ui.notifications?.info?.("Vicious Opportunist has already been used for this attack.");
+    return null;
+  }
+  if (liveMessage.system?.isMiss || liveMessage.system?.isCritical) {
+    ui.notifications?.warn?.("Vicious Opportunist can only be used on a normal hit.");
+    return null;
+  }
+  const actorId = liveMessage?.flags?.nimble?.actorId ?? liveMessage?.speaker?.actor;
+  const actor = actorId ? game.actors?.get?.(actorId) : null;
+  if (!isCheatActorForNHD(actor)) {
+    ui.notifications?.warn?.("Vicious Opportunist is only available to Cheat characters.");
+    return null;
+  }
+  const itemId = liveMessage?.flags?.nimble?.itemId;
+  const itemUuid = liveMessage?.flags?.nimble?.itemUuid;
+  let item = itemId ? actor?.items?.get?.(itemId) : null;
+  if (!item && itemUuid) {
+    try { item = await fromUuid(itemUuid); } catch {}
+  }
+  if (!item?.activate) {
+    ui.notifications?.error?.("Could not find the original item for Vicious Opportunist.");
+    return null;
+  }
+  const faces = getPrimaryDieFacesFromMessage(liveMessage);
+  if (!faces) {
+    ui.notifications?.error?.("Could not determine the weapon's primary die size.");
+    return null;
+  }
+  const targetUuids = await _targetTokenUuidsForMessage(liveMessage);
+  const rollMode = Number(liveMessage?.system?.rollMode ?? 0) || 0;
+  const rollHidden = !!liveMessage?.whisper?.length;
+  const originalId = liveMessage.id;
+  if (deleteOriginal) {
+    try { await liveMessage.delete(); } catch (e) { console.warn(`${MODULE_ID} | could not delete original Vicious Opportunist card`, e); }
+  }
+  const newMessage = await _withTemporaryTargets(targetUuids, async () => item.activate({
+    fastForward: true,
+    rollMode,
+    primaryDieValue: faces,
+    primaryDieModifier: 0,
+    rollHidden
+  }));
+  try {
+    await newMessage?.setFlag?.(MODULE_ID, "viciousOpportunistUsed", true);
+    await newMessage?.setFlag?.(MODULE_ID, "viciousOpportunistOriginalMessageId", originalId);
+  } catch {}
+  return newMessage;
+}
 
 export function getAvailableTargetExtrasForActor(actor) {
   try {

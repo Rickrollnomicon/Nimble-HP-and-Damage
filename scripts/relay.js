@@ -83,43 +83,17 @@ async function _toggleStatusEffectBestEffort(tokenDoc, actor, statusIdOrName, ac
   await toggleTarget.toggleStatusEffect(effectId, { active: !!active });
 }
 
-async function _incrementWoundsBestEffort(actor, amount = 1) {
-  try {
-    const amt = Number(amount ?? 0);
-    if (!actor || !Number.isFinite(amt) || amt === 0) return;
-
-    const path = "system.attributes.wounds.value";
-    const current = foundry.utils.getProperty(actor, path);
-    if (current === undefined || current === null || Number.isNaN(Number(current))) return;
-    const next = Math.max(0, Number(current) + amt);
-    await actor.update({ [path]: next });
-  } catch (err) {
-    console.error(`[${MODULE_ID}] Failed to increment wounds:`, err);
-  }
-}
-
-async function _applyDeadDyingStatusForActor(actor, tokenDoc, ctx = {}) {
+async function _applyDeadDyingStatusForActor(actor, tokenDoc) {
   try {
     if (!game.settings.get(MODULE_ID, "add-defeated")) return;
     if (!actor) return;
 
     const hp = _getResourceValue(actor, HP_VALUE_PATH);
-    const isPC = (typeof ctx?.isPC === "boolean")
-      ? ctx.isPC
-      : !!(actor.hasPlayerOwner || actor.type === "character" || actor.type === "pc");
-    const preDying = !!ctx?.preDying;
-    const delta = Number(ctx?.delta ?? 0);
+    const isPC = !!(actor.hasPlayerOwner || actor.type === "character" || actor.type === "pc");
 
     if (hp <= 0) {
-      if (isPC) {
-        const dyingId = _resolveStatusIdBestEffort("dying");
-        const alreadyDying = (tokenDoc?.actor?.statuses ?? tokenDoc?.statuses ?? actor?.statuses)?.has?.(dyingId) ?? false;
-        await _toggleStatusEffectBestEffort(tokenDoc, actor, "dying", true);
-        if (!preDying && !alreadyDying) await _incrementWoundsBestEffort(actor, 1);
-        if (preDying && delta > 0) await _incrementWoundsBestEffort(actor, 1);
-      } else {
-        await _toggleStatusEffectBestEffort(tokenDoc, actor, "dead", true);
-      }
+      if (isPC) await _toggleStatusEffectBestEffort(tokenDoc, actor, "dying", true);
+      else await _toggleStatusEffectBestEffort(tokenDoc, actor, "dead", true);
     } else {
       if (isPC) await _toggleStatusEffectBestEffort(tokenDoc, actor, "dying", false);
     }
@@ -190,9 +164,6 @@ async function _applyDamageAsGM({ tokenUuid, actorUuid, delta, target, note, whi
   }
   if (!actor) return;
 
-  const isPC = !!(actor.hasPlayerOwner || actor.type === "character" || actor.type === "pc");
-  const preDying = isPC ? ((tDoc?.actor?.statuses ?? tDoc?.statuses ?? actor?.statuses)?.has?.(_resolveStatusIdBestEffort("dying")) ?? false) : false;
-
   const updates = {};
   const resourceValue = _getResourceValue(actor, HP_VALUE_PATH);
   const tempValue = _getResourceValue(actor, HP_TEMP_PATH);
@@ -225,7 +196,7 @@ async function _applyDamageAsGM({ tokenUuid, actorUuid, delta, target, note, whi
 
   if (Object.keys(updates).length) {
     await actor.update(updates);
-    await _applyDeadDyingStatusForActor(actor, tDoc, { isPC, preDying, delta: d });
+    await _applyDeadDyingStatusForActor(actor, tDoc);
   }
 
   // Optional: create a whispered chat card (used when a caller explicitly asks for it).
@@ -289,14 +260,12 @@ async function _restoreUndoAsGM({ steps = [] } = {}) {
     actor = actor || game.actors?.get?.(step.actorId) || null;
     if (!actor) continue;
 
-    const actorUpdate = {
+    await actor.update({
       [`system.${HP_VALUE_PATH}`]: Number(step?.before?.hp?.value ?? 0) || 0,
       [`system.${HP_TEMP_PATH}`]: Number(step?.before?.hp?.temp ?? 0) || 0,
       [`system.${HP_MAX_PATH}`]: Number(step?.before?.hp?.max ?? 0) || 0,
       [`system.${HP_TEMPMAX_PATH}`]: Number(step?.before?.hp?.tempmax ?? 0) || 0
-    };
-    if (step?.before?.wounds?.value !== undefined) actorUpdate[`system.attributes.wounds.value`] = Number(step?.before?.wounds?.value ?? 0) || 0;
-    await actor.update(actorUpdate);
+    });
 
     // Re-apply statuses
     const tokenDoc = step.tokenUuid ? await fromUuid(step.tokenUuid).catch(() => null) : null;

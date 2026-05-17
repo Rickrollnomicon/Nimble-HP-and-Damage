@@ -48,6 +48,20 @@ export const registerSettings = function () {
     type: Boolean
   });
 
+  game.settings.register(modulename, "monster-armor-rule", {
+    name: "Monster Armor Rule",
+    hint: "Choose how monster Medium/Heavy Armor reduces damage in the Floating HUD and Enhanced Damage Chat Cards. Original uses dice-only damage; Flat Reduction is the current playtest rule.",
+    scope: "world",
+    restricted: true,
+    config: true,
+    default: "original",
+    type: String,
+    choices: {
+      original: "Original / Just the Dice",
+      flat: "Flat Reduction / Playtest"
+    }
+  });
+
   // Dead/Dying automation gate.
   game.settings.register(modulename, "add-defeated", {
     name: "Auto-apply Dead/Dying",

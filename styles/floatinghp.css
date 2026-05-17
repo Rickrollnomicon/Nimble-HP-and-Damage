@@ -1320,6 +1320,48 @@ button[data-action="fury-keep"] {
   box-shadow: 0 0 0 1px rgba(231, 209, 177, 0.12) inset !important;
 }
 
+
+.nhd-chat-misc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px 0;
+  flex-wrap: nowrap;
+}
+
+.nhd-chat-misc-row > .nhd-chat-label {
+  min-width: 100px;
+}
+
+.nhd-chat-misc-sublabel {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--nimble-dark-text-color, #E7D1B1);
+  opacity: 0.85;
+}
+
+.nhd-chat-misc-input {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 92px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(231, 209, 177, 0.35) !important;
+  background: rgba(0, 0, 0, 0.22) !important;
+  color: var(--nimble-dark-text-color, #E7D1B1) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  box-shadow: none !important;
+}
+
+.nhd-chat-misc-input:focus {
+  outline: none !important;
+  border-color: rgba(231, 209, 177, 0.58) !important;
+  box-shadow: 0 0 0 1px rgba(231, 209, 177, 0.16) inset !important;
+}
+
 .nhd-chat-preview {
   display: flex;
   align-items: baseline;
