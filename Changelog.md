@@ -1,3 +1,10 @@
+## [3.1.1] - 2026-05-17
+
+### Fixed
+- Armor calculations in "Just the Dice" mode now include the flat bonuses from the roll when the roll details are expanded.  Previously it was reverting to the roll total.
+
+---
+
 ## [3.1.0] - 2026-05-17
 
 ### Added

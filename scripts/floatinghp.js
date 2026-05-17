@@ -852,15 +852,30 @@ function _computeAutoFillFromRollMessage(msg) {
     const cardText = _getRenderedMessageText(msg);
     const isCrit = /\bCRIT\b/i.test(cardText) || /Critical Hit/i.test(cardText);
 
+    const parsePrimaryDiceOnlyFromCardText = (text) => {
+      try {
+        const matches = Array.from(String(text || "").matchAll(/Primary\s+Die\s+Value\s*:\s*(-?\d+)/gi));
+        if (!matches.length) return null;
+        const sum = matches.reduce((acc, m) => acc + (Number(m[1]) || 0), 0);
+        return Number.isFinite(sum) && sum > 0 ? sum : null;
+      } catch {
+        return null;
+      }
+    };
+
     // If DOM parsing succeeded, use it.
     if (domFound && Number.isFinite(domTotal) && domTotal !== 0) {
       const conditions = _extractConditionsFromRenderedMessage(msg.id);
       const misc = Number(msg?.getFlag?.(MODULE_ID, "miscFlatBonus") ?? msg?.flags?.[MODULE_ID]?.miscFlatBonus ?? 0) || 0;
       const miscDice = Number(msg?.getFlag?.(MODULE_ID, "miscDiceBonus") ?? msg?.flags?.[MODULE_ID]?.miscDiceBonus ?? 0) || 0;
+      const primaryDiceOnly = parsePrimaryDiceOnlyFromCardText(cardText);
+      const effectiveDomDice = (primaryDiceOnly !== null && (!Number.isFinite(domDice) || domDice === 0 || domDice === domTotal))
+        ? primaryDiceOnly
+        : domDice;
       return {
         amount: Math.max(0, domTotal),
         full: Math.max(0, domTotal),
-        diceOnly: Number.isFinite(domDice) ? domDice : 0,
+        diceOnly: Number.isFinite(effectiveDomDice) ? effectiveDomDice : 0,
         armorMode: null,
         armorMixed: false,
         isCrit,

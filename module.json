@@ -2,7 +2,7 @@
   "id": "nimble-hp-and-damage",
   "title": "Nimble HP and Damage",
   "description": "Floating HP HUD plus GM-routed damage/healing for player-targeted NPCs (Nimble).",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "authors": [
     {
       "name": "Rickrollnomicon"
@@ -19,7 +19,7 @@
     "styles/rick-module-styling.css"
   ],
   "url": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage",
-  "download": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/releases/download/v3.1.0/nimble-hp-and-damage-v3.1.0.zip",
+  "download": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/releases/download/v3.1.1/nimble-hp-and-damage-v3.1.1.zip",
   "manifest": "https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/module.json",
   "bugs": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/issues",
   "compatibility": {
