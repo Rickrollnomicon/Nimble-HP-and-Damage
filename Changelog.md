@@ -1,3 +1,9 @@
+## [3.1.2] - 2026-05-22
+
+### Changed
+
+- Updated some wording in Settings, and set the "Enhanced Chat Card" setting to default activated. 
+
 ## [3.1.1] - 2026-05-17
 
 ### Fixed

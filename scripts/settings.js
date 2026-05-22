@@ -6,10 +6,9 @@ export const registerSettings = function () {
   const modulename = "nimble-hp-and-damage";
 
   // Master feature gate for ALL player-to-NPC damage routing.
-  // Default OFF to preserve standalone Floating HP Tracker behavior.
   game.settings.register(modulename, "allow-player-damage", {
     name: "Allow players to apply damage directly",
-    hint: "When enabled, players may target NPC tokens and apply damage/healing via the Floating HP HUD (routed through the GM). Requires reload.",
+    hint: "When enabled, players may target NPC tokens and apply damage/healing via the Floating HUD or Enhanced Chat Cards. (SocketLib module optional but recommended for best damage routing)",
     scope: "world",
     restricted: true,
     config: true,
@@ -19,18 +18,18 @@ export const registerSettings = function () {
   });
 
   game.settings.register(modulename, "enable-enhanced-chat-cards", {
-    name: "Enable Enhanced Damage Chat Cards",
-    hint: "Adds an enhanced control strip above compatible Nimble Apply Damage buttons. Current build is a foundation pass.",
+    name: "Enable Enhanced Chat Cards",
+    hint: "Adds enhanced damage application functionality to damage chat cards, including armor reduction/bypass, resistances/vulnerabilities, and select class abilities.",
     scope: "world",
     restricted: true,
     config: true,
-    default: false,
+    default: true,
     type: Boolean
   });
 
   game.settings.register(modulename, "enable-floating-tracker", {
-    name: "Enable Floating Tracker",
-    hint: "Show the Nimble HP and Damage floating tracker.",
+    name: "Enable Floating HUD",
+    hint: "Enable use of the Floating HUD. Individual players can choose to show/hide using a button in the left menu.",
     scope: "world",
     restricted: true,
     config: true,
@@ -50,7 +49,7 @@ export const registerSettings = function () {
 
   game.settings.register(modulename, "monster-armor-rule", {
     name: "Monster Armor Rule",
-    hint: "Choose how monster Medium/Heavy Armor reduces damage in the Floating HUD and Enhanced Damage Chat Cards. Original uses dice-only damage; Flat Reduction is the current playtest rule.",
+    hint: "Choose how monster Medium/Heavy Armor reduces damage in the Floating HUD and Enhanced Chat Cards. Original uses dice-only damage; Flat Reduction is the current playtest rule.",
     scope: "world",
     restricted: true,
     config: true,
@@ -64,7 +63,8 @@ export const registerSettings = function () {
 
   // Dead/Dying automation gate.
   game.settings.register(modulename, "add-defeated", {
-    name: "Auto-apply Dead/Dying",
+    name: "Auto-apply Dying & Wounds to PCs",
+    hint: "Automatically apply the Dying condition and add one Wound to player characters when Hit Points reach zero. Additional damage adds an additional Wound.",
     scope: "world",
     restricted: true,
     default: true,
