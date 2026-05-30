@@ -9,6 +9,20 @@ export const error = (...args) => console.error("nimble-hp-and-damage |", ...arg
 
 export const setting = (key) => game.settings.get("nimble-hp-and-damage", key);
 
+function isAlternateDicePoolFunctionalityEnabled() {
+  try {
+    return game.settings.get("nimble-hp-and-damage", "enable-alternate-dice-pools") === true;
+  } catch {
+    return false;
+  }
+}
+
+function allowLegacyDicePoolExtra(key) {
+  const k = String(key || "").toLowerCase().trim();
+  if (k === "judgment" || k === "fury") return isAlternateDicePoolFunctionalityEnabled();
+  return true;
+}
+
 function getMonsterArmorRule() {
   try {
     return game.settings.get(MODULE_ID, "monster-armor-rule") === "flat" ? "flat" : "original";
@@ -694,12 +708,171 @@ function _sumKeptDiceResults(roll) {
   return total;
 }
 
+function _decodeHtmlEntities(text) {
+  try {
+    if (typeof document !== "undefined") {
+      const ta = document.createElement("textarea");
+      ta.innerHTML = String(text ?? "");
+      return ta.value;
+    }
+  } catch { /* ignore */ }
+  return String(text ?? "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function _plainTextFromHtml(html) {
+  try {
+    const decoded = _decodeHtmlEntities(html);
+    return String(decoded || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  } catch {
+    return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+}
+
 function _getRenderedMessageText(msg) {
   try {
     const el = document.querySelector(`li.chat-message[data-message-id="${msg.id}"]`);
     if (el?.innerText) return el.innerText.replace(/\s+/g, " ").trim();
   } catch { /* ignore */ }
-  return String(msg?.content || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return _plainTextFromHtml(msg?.content || "");
+}
+
+function _getMessageContentText(msg) {
+  return _plainTextFromHtml(msg?.content || "");
+}
+
+function _getCorePoolDiceOnlyFromMessageText(msg, renderedText = "") {
+  const info = _getCorePoolFormulaInfoFromMessageText(msg, renderedText);
+  return Number(info?.poolTotal ?? 0) || 0;
+}
+
+function _getCorePoolFormulaInfoFromMessageText(msg, renderedText = "") {
+  // Collapsed Nimble Core cards can hide the expanded roll formula from innerText,
+  // while the original message HTML can keep it in tooltip/detail markup. Parse
+  // several views and keep the candidate that found the most labelled pool value.
+  const rawHtml = _decodeHtmlEntities(msg?.content || "");
+  const htmlText = _plainTextFromHtml(rawHtml);
+  const rollText = (() => {
+    try {
+      return (msg?.rolls ?? []).map(r => {
+        const parts = [];
+        parts.push(r?.formula ?? r?._formula ?? "");
+        parts.push(r?.options?.flavor ?? "");
+        parts.push(r?.flavor ?? "");
+        parts.push(JSON.stringify(r?.options ?? {}));
+        parts.push(JSON.stringify(r?.terms ?? []));
+        return parts.join(" ");
+      }).join(" ");
+    } catch {
+      return "";
+    }
+  })();
+
+  const candidates = [
+    _parseCorePoolFormulaInfoFromCardText(renderedText),
+    _parseCorePoolFormulaInfoFromCardText(_getMessageContentText(msg)),
+    _parseCorePoolFormulaInfoFromCardText(htmlText),
+    _parseCorePoolFormulaInfoFromCardText(rawHtml),
+    _parseCorePoolFormulaInfoFromCardText(rollText)
+  ];
+
+  // If labels are present but the formula flat portion could not be recovered
+  // from text/HTML, infer the unlabelled flat from the Roll object when possible.
+  try {
+    const bestPool = Math.max(0, ...candidates.map(c => Number(c?.poolTotal ?? 0) || 0));
+    if (bestPool > 0) {
+      const rollFull = (msg?.rolls ?? []).reduce((sum, r) => sum + (Number(r?.total) || 0), 0);
+      const rollDice = (msg?.rolls ?? []).reduce((sum, r) => sum + (_sumKeptDiceResults(r) || 0), 0);
+      const inferredFlat = rollFull - rollDice - bestPool;
+      if (Number.isFinite(inferredFlat) && inferredFlat >= 0) {
+        candidates.push({ found: true, poolTotal: bestPool, formulaFlatTotal: inferredFlat });
+      }
+    }
+  } catch { /* ignore */ }
+
+  candidates.sort((a, b) => {
+    const ap = Number(a?.poolTotal ?? 0) || 0;
+    const bp = Number(b?.poolTotal ?? 0) || 0;
+    const af = Number(a?.formulaFlatTotal ?? 0) || 0;
+    const bf = Number(b?.formulaFlatTotal ?? 0) || 0;
+    return (bp - ap) || (bf - af);
+  });
+  return candidates[0] || { found: false, poolTotal: 0, formulaFlatTotal: 0 };
+}
+
+function _parseCorePoolDiceOnlyFromCardText(text) {
+  const info = _parseCorePoolFormulaInfoFromCardText(text);
+  return Number(info?.poolTotal ?? 0) || 0;
+}
+
+function _parseCorePoolFormulaInfoFromCardText(text) {
+  try {
+    const decoded = _decodeHtmlEntities(text);
+    const withoutTags = String(decoded || "").replace(/<[^>]+>/g, " ");
+    const normalized = withoutTags.replace(/\s+/g, " ").trim();
+
+    // Nimble Core 0.8.6+ prints dice-pool bonuses as numeric formula terms
+    // followed by bracketed pool labels, e.g.:
+    //   1d8x + 3 + 7 [Judgment Dice] + 3 [Judgment Dice]
+    //   1d10x + 3 + 3 [Fury Dice] + 2 [Fury Dice] + 4 [Fury Dice]
+    const poolRe = /(?:^|[^\d])([+-]?\s*\d+)\s*\[\s*[^\]]*(?:dice|die|pool)[^\]]*\]/gi;
+    let poolTotal = 0;
+    let found = false;
+    for (const m of normalized.matchAll(poolRe)) {
+      const n = Number(String(m[1] || "").replace(/\s+/g, ""));
+      if (!Number.isFinite(n)) continue;
+      poolTotal += n;
+      found = true;
+    }
+    if (!found) return { found: false, poolTotal: 0, formulaFlatTotal: 0 };
+
+    let formulaFlatTotal = 0;
+    // Capture each formula-like segment that starts with a dice expression and
+    // contains at least one labelled pool term. The segment deliberately stops
+    // before common card labels so displayed totals such as "Damage 15" are not
+    // interpreted as formula constants.
+    const formulaRe = /\b\d+d\d+\w*(?:(?!\b(?:Armor|Res\/Vuln|Defend|Misc|Damage|Apply|Targets?)\b).){0,300}?\[[^\]]*(?:dice|die|pool)[^\]]*\](?:(?!\b(?:Armor|Res\/Vuln|Defend|Misc|Damage|Apply|Targets?)\b).){0,120}/gi;
+    for (const fm of normalized.matchAll(formulaRe)) {
+      let formula = String(fm[0] || "");
+      // Trim anything after a clear formula boundary if the regex captured too much.
+      formula = formula.split(/\b(?:Armor|Res\/Vuln|Defend|Misc|Damage|Apply|Targets?)\b/i)[0] || formula;
+      if (!/\[\s*[^\]]*(?:dice|die|pool)[^\]]*\]/i.test(formula)) continue;
+      const tail = formula.replace(/^\s*\d+d\d+\w*\s*/i, "");
+      const termRe = /([+\-])\s*(\d+)\s*(\[[^\]]+\])?/g;
+      for (const tm of tail.matchAll(termRe)) {
+        if (tm[3]) continue; // bracketed pool term: dice-derived, not flat
+        const sign = tm[1] === "-" ? -1 : 1;
+        const n = Number(tm[2]);
+        if (Number.isFinite(n)) formulaFlatTotal += sign * n;
+      }
+    }
+
+    // If the formula segmentation failed but there is a simple "XdY... + N + M [Pool]"
+    // pattern, count only unbracketed signed constants immediately after the dice term.
+    if (formulaFlatTotal === 0) {
+      const simpleRe = /\b\d+d\d+\w*((?:\s*[+\-]\s*\d+\s*(?:\[[^\]]+\])?){1,12})/gi;
+      for (const sm of normalized.matchAll(simpleRe)) {
+        const tail = String(sm[1] || "");
+        if (!/\[[^\]]*(?:dice|die|pool)[^\]]*\]/i.test(tail)) continue;
+        const termRe = /([+\-])\s*(\d+)\s*(\[[^\]]+\])?/g;
+        for (const tm of tail.matchAll(termRe)) {
+          if (tm[3]) continue;
+          const sign = tm[1] === "-" ? -1 : 1;
+          const n = Number(tm[2]);
+          if (Number.isFinite(n)) formulaFlatTotal += sign * n;
+        }
+      }
+    }
+
+    return { found: true, poolTotal, formulaFlatTotal };
+  } catch {
+    return { found: false, poolTotal: 0, formulaFlatTotal: 0 };
+  }
 }
 
 function _isRollVisibleOnCard(roll, cardText) {
@@ -869,9 +1042,19 @@ function _computeAutoFillFromRollMessage(msg) {
       const misc = Number(msg?.getFlag?.(MODULE_ID, "miscFlatBonus") ?? msg?.flags?.[MODULE_ID]?.miscFlatBonus ?? 0) || 0;
       const miscDice = Number(msg?.getFlag?.(MODULE_ID, "miscDiceBonus") ?? msg?.flags?.[MODULE_ID]?.miscDiceBonus ?? 0) || 0;
       const primaryDiceOnly = parsePrimaryDiceOnlyFromCardText(cardText);
-      const effectiveDomDice = (primaryDiceOnly !== null && (!Number.isFinite(domDice) || domDice === 0 || domDice === domTotal))
+      const corePoolInfo = _getCorePoolFormulaInfoFromMessageText(msg, cardText);
+      const corePoolDiceOnly = Number(corePoolInfo?.poolTotal ?? 0) || 0;
+      const baseEffectiveDomDice = (primaryDiceOnly !== null && (!Number.isFinite(domDice) || domDice === 0 || domDice === domTotal))
         ? primaryDiceOnly
         : domDice;
+      // If Core pool terms are present, derive the dice bucket from the final
+      // displayed total minus the unlabelled flat constants in the same formula.
+      // This avoids both failure modes: collapsed cards where roll details are
+      // hidden, and expanded cards where tooltip dice parsing can otherwise infer
+      // the entire full total and then add the pool a second time.
+      const effectiveDomDice = corePoolInfo?.found
+        ? Math.max(0, (Number(domTotal) || 0) - (Number(corePoolInfo.formulaFlatTotal) || 0))
+        : ((Number(baseEffectiveDomDice) || 0) + corePoolDiceOnly);
       return {
         amount: Math.max(0, domTotal),
         full: Math.max(0, domTotal),
@@ -933,7 +1116,8 @@ function _computeAutoFillFromRollMessage(msg) {
     const visibleRolls = (msg.rolls ?? []).filter(r => _isRollVisibleOnCard(r, cardText));
     const rollsForSum = (visibleRolls.length ? visibleRolls : (msg.rolls ?? []));
     const full = rollsForSum.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-    const diceOnly = rollsForSum.reduce((sum, r) => sum + (_sumKeptDiceResults(r) || 0), 0);
+    const corePoolDiceOnly = _getCorePoolDiceOnlyFromMessageText(msg, cardText);
+    const diceOnly = rollsForSum.reduce((sum, r) => sum + (_sumKeptDiceResults(r) || 0), 0) + (Number(corePoolDiceOnly) || 0);
 
     const amount = Number.isFinite(full) ? full : 0;
     if (!amount) return null;
@@ -2522,7 +2706,7 @@ Right-click to reset`;
       const formula = this._getChartFormulaForLevel(SNEAK_ATTACK_BY_LEVEL, lvl);
       if (formula) extras.push({ key: "sneak", label: "Sneak Attack", formula, level: lvl });
     }
-    if (starting === "oathsworn") {
+    if (starting === "oathsworn" && allowLegacyDicePoolExtra("judgment")) {
       const formula = this._getChartFormulaForLevel(JUDGMENT_DICE_BY_LEVEL, lvl);
       if (formula) extras.push({ key: "judgment", label: "Judgment Dice", formula, level: lvl });
     }
@@ -2533,7 +2717,7 @@ Right-click to reset`;
 
 
   // Fury Dice (Berserker)
-  if (this._getStartingClassIdLower(attackerActor) === "berserker") {
+  if (this._getStartingClassIdLower(attackerActor) === "berserker" && allowLegacyDicePoolExtra("fury")) {
     extras.push({ key: "fury", label: "Fury Dice", type: "fury" });
   }
 
@@ -4696,7 +4880,7 @@ export function getAvailableTargetExtrasForActor(actor) {
     const formula = pick([{ level: 1, formula: "1d6" },{ level: 3, formula: "1d8" },{ level: 7, formula: "2d8" },{ level: 9, formula: "2d10" },{ level: 11, formula: "2d12" },{ level: 15, formula: "2d20" },{ level: 17, formula: "3d20" }]);
     if (formula) extras.push({ key: "sneak", label: "Sneak Attack", formula, level: lvl });
   }
-  if (starting === "oathsworn") {
+  if (starting === "oathsworn" && allowLegacyDicePoolExtra("judgment")) {
     const formula = pick([{ level: 1, formula: "2d6" },{ level: 3, formula: "2d8" },{ level: 5, formula: "2d10" },{ level: 8, formula: "2d12" },{ level: 10, formula: "2d20" },{ level: 14, formula: "3d20" }]);
     if (formula) extras.push({ key: "judgment", label: "Judgment Dice", formula, level: lvl });
   }
@@ -4704,7 +4888,7 @@ export function getAvailableTargetExtrasForActor(actor) {
     const formula = pick([{ level: 1, formula: "1d6" },{ level: 3, formula: "1d8" },{ level: 5, formula: "1d10" },{ level: 8, formula: "1d12" },{ level: 10, formula: "1d20" }]);
     if (formula) extras.push({ key: "shining", label: "Shining Mandate", formula, level: lvl });
   }
-  if (starting === "berserker") extras.push({ key: "fury", label: "Fury Dice", type: "fury", level: lvl });
+  if (starting === "berserker" && allowLegacyDicePoolExtra("fury")) extras.push({ key: "fury", label: "Fury Dice", type: "fury", level: lvl });
   return extras;
 }
 

@@ -1,3 +1,23 @@
+## [3.1.3] - 2026-05-30
+
+### Added
+
+- New setting: Enable Enhanced/Alternate Dice Pool Functionality
+  - Enables the module's legacy Judgment Dice and Fury Dice management tools on Enhanced Chat Cards and the Floating HUD.
+  -  Disabled by default for new installations.
+
+### Changed
+
+- Enhanced Chat Cards and the Floating HUD now recognize Nimble Core's native Judgment Dice and Fury Dice pool values when calculating armor reduction in Original "Just the Dice" armor mode.
+- Pool values are treated as dice-based damage for Medium Armor, Heavy Armor, Resistance, Vulnerability, and armor bypass calculations.
+- Legacy Fury Dice and Judgment Dice controls are automatically hidden when the alternate dice pool setting is disabled, reducing UI clutter and avoiding redundant functionality.
+
+### Compatibility
+
+- Updated for improved compatibility with Nimble v0.8.6 and its native dice pool system.
+
+---
+
 ## [3.1.2] - 2026-05-22
 
 ### Changed

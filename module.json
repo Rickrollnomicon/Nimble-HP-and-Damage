@@ -1,8 +1,8 @@
 {
   "id": "nimble-hp-and-damage",
   "title": "Nimble HP and Damage",
-  "description": "Floating HP HUD plus GM-routed damage/healing for player-targeted NPCs (Nimble).",
-  "version": "3.1.2",
+  "description": "Enhanced Chat Cards, Floating HP HUD, GM-routed damage/healing for player-targeted NPCs (Nimble).",
+  "version": "3.1.3",
   "authors": [
     {
       "name": "Rickrollnomicon"
@@ -19,7 +19,7 @@
     "styles/rick-module-styling.css"
   ],
   "url": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage",
-  "download": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/releases/download/v3.1.2/nimble-hp-and-damage-v3.1.2.zip",
+  "download": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/releases/download/v3.1.3/nimble-hp-and-damage-v3.1.3.zip",
   "manifest": "https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/module.json",
   "bugs": "https://github.com/Rickrollnomicon/Nimble-HP-and-Damage/issues",
   "compatibility": {

@@ -47,6 +47,16 @@ export const registerSettings = function () {
     type: Boolean
   });
 
+  game.settings.register(modulename, "enable-alternate-dice-pools", {
+    name: "Enable enhanced/alternate dice pool functionality",
+    hint: "Enables alternate (legacy) pool management for Judgment and Fury Dice, adding options to the enhanced chat card and floating HUD.",
+    scope: "world",
+    restricted: true,
+    config: true,
+    default: false,
+    type: Boolean
+  });
+
   game.settings.register(modulename, "monster-armor-rule", {
     name: "Monster Armor Rule",
     hint: "Choose how monster Medium/Heavy Armor reduces damage in the Floating HUD and Enhanced Chat Cards. Original uses dice-only damage; Flat Reduction is the current playtest rule.",

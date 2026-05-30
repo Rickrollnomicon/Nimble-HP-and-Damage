@@ -68,7 +68,7 @@ The module includes configurable settings inside Foundry:
 
 ## Version
 
-Current package baseline: **v3.1.0**
+Current package baseline: **v3.1.3**
 
 ---
 

@@ -818,6 +818,10 @@ function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(
     && armorCtx.armorTypes.some((t) => t === "medium" || t === "heavy");
   const useMonsterControls = profileKind === "monster-only" || profileKind === "mixed" || (!profileKind && armorCtx.hasArmor);
   const sourceExtras = Array.isArray(state.sourceExtras) ? state.sourceExtras : [];
+  const availableExtraKeys = new Set(sourceExtras.map(ex => String(ex?.key || "")));
+  for (const key of ["judgment", "fury"]) {
+    if (!availableExtraKeys.has(key) && state.extraDamage?.[key]) delete state.extraDamage[key];
+  }
 
   if (controls) {
     if (showDefend) {
