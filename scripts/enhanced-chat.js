@@ -56,7 +56,10 @@ function getState(messageId) {
       targetProfile: null,
       targetProfileKey: null,
       targetProfilePromise: null,
-      targetProfilePromiseKey: null
+      targetProfilePromiseKey: null,
+      sourceIgnoreArmor: false,
+      sourceIgnoreArmorInitialized: false,
+      sourceIgnoreArmorActive: false
     });
   }
   return stateByMessage.get(messageId);
@@ -110,6 +113,23 @@ function iconForExtraKey(key, isRolled = false) {
   if (key === "judgment" || key === "shining") return '<i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>';
   if (key === "fury") return '<i class="fa-regular fa-face-angry" aria-hidden="true"></i>';
   return '<i class="fa-solid fa-dice" aria-hidden="true"></i>';
+}
+
+
+function isCritMessage(message) {
+  try {
+    const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+    if (liveMessage?.system?.isCritical) return true;
+    return !!getMessageDamageContext(liveMessage)?.isCrit;
+  } catch {
+    return false;
+  }
+}
+
+function filterExtrasForMessageVisibility(extras, message) {
+  const list = Array.isArray(extras) ? extras : [];
+  const isCrit = isCritMessage(message);
+  return list.filter(ex => String(ex?.key || "") !== "sneak" || isCrit);
 }
 
 function shouldShowViciousOpportunist(message, state) {
@@ -817,9 +837,16 @@ function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(
   const hasArmoredMonsterTarget = Array.isArray(armorCtx?.armorTypes)
     && armorCtx.armorTypes.some((t) => t === "medium" || t === "heavy");
   const useMonsterControls = profileKind === "monster-only" || profileKind === "mixed" || (!profileKind && armorCtx.hasArmor);
-  const sourceExtras = Array.isArray(state.sourceExtras) ? state.sourceExtras : [];
+  const sourceIgnoreArmor = !!getCurrentMessageDamageContext(message)?.ignoreArmor;
+  state.sourceIgnoreArmor = sourceIgnoreArmor;
+  if (sourceIgnoreArmor && hasArmoredMonsterTarget && !state.sourceIgnoreArmorInitialized) {
+    state.armorMode = "bypass";
+    state.sourceIgnoreArmorActive = true;
+    state.sourceIgnoreArmorInitialized = true;
+  }
+  const sourceExtras = filterExtrasForMessageVisibility(state.sourceExtras, message);
   const availableExtraKeys = new Set(sourceExtras.map(ex => String(ex?.key || "")));
-  for (const key of ["judgment", "fury"]) {
+  for (const key of ["sneak", "judgment", "fury"]) {
     if (!availableExtraKeys.has(key) && state.extraDamage?.[key]) delete state.extraDamage[key];
   }
 
@@ -849,7 +876,10 @@ function refreshWrapper(message, ctx, wrapper, armorCtx = getTargetArmorContext(
         state.armorMode = "bypass";
       }
       state.defendMode = 0;
-      if (!hasArmoredMonsterTarget) state.armorMode = "normal";
+      if (!hasArmoredMonsterTarget) {
+        state.armorMode = "normal";
+        state.sourceIgnoreArmorActive = false;
+      }
       controls.innerHTML = `${hasArmoredMonsterTarget ? `
         <div class="nhd-chat-control">
           <span class="nhd-chat-label">Armor</span>
@@ -989,6 +1019,7 @@ function bindWrapper(message, ctx, wrapper) {
       const liveCtx = refreshLiveContext(message, ctx);
       const armorCtx = getTargetArmorContext(liveCtx.root, state.targetProfile);
       state.armorMode = nextArmor(state.armorMode, armorCtx.armorTypes);
+      state.sourceIgnoreArmorActive = false;
       refreshWrapper(message, refreshLiveContext(message, ctx), wrapper);
       return;
     } else if (cycleType === "res-vuln") {
@@ -1024,7 +1055,16 @@ function bindWrapper(message, ctx, wrapper) {
     event.preventDefault();
     const state = getState(message.id);
     const cycleType = String(btn.dataset.cycle || "");
-    if (cycleType === "armor") state.armorMode = "normal";
+    if (cycleType === "armor") {
+      const armorCtx = getTargetArmorContext(ctx.root, state.targetProfile);
+      if (state.sourceIgnoreArmor && Array.isArray(armorCtx?.armorTypes) && armorCtx.armorTypes.some((t) => t === "medium" || t === "heavy")) {
+        state.armorMode = "bypass";
+        state.sourceIgnoreArmorActive = true;
+      } else {
+        state.armorMode = "normal";
+        state.sourceIgnoreArmorActive = false;
+      }
+    }
     else if (cycleType === "res-vuln") state.resVulnMode = "normal";
     else if (cycleType === "defend") state.defendMode = 0;
     const extraKey = String(btn.dataset.extra || "");
@@ -1202,6 +1242,7 @@ function bindApply(message, ctx) {
       tokenDocs,
       baseContext,
       armorOverrideMode: state.armorMode,
+      automaticArmorBypass: !!state.sourceIgnoreArmorActive && state.armorMode === "bypass",
       resVulnMode: state.resVulnMode,
       defendMode: state.defendMode,
       extraDamage: state.extraDamage,

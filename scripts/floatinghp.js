@@ -134,7 +134,7 @@ async function _restoreUndoSnapshot(snapshot) {
 
   return true;
 }
-async function _postTargetedChatCard({ entries = [], verbOverride = null, armorOverride = false, transformMode = "normal", defendMeta = null, undoMeta = null }) {
+async function _postTargetedChatCard({ entries = [], verbOverride = null, armorOverride = false, transformMode = "normal", defendMeta = null, undoMeta = null, automaticArmorBypass = false }) {
   const armorOverrideMode = (typeof armorOverride === "string")
     ? String(armorOverride || "normal")
     : (armorOverride ? "bypass" : "normal");
@@ -277,7 +277,10 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
 
       appliedDetailsHtml = lines.length ? `<div class="rms-chat-breakdown">${lines.join("")}</div>` : "";
     } else if (isDamage && armorOverrideMode === "bypass" && transformState === "normal") {
-      appliedDetailsHtml = `<div class="rms-chat-breakdown"><div class="rms-chat-row"><span class="rms-chat-row-label"><strong><em>Armor values manually ignored for this attack.</em></strong></span></div></div>`;
+      const bypassText = automaticArmorBypass
+        ? "Armor automatically bypassed for this attack."
+        : "Armor values manually ignored for this attack.";
+      appliedDetailsHtml = `<div class="rms-chat-breakdown"><div class="rms-chat-row"><span class="rms-chat-row-label"><strong><em>${_escape(bypassText)}</em></strong></span></div></div>`;
     }
     const canUndo = Array.isArray(undoMeta?.steps) && undoMeta.steps.length > 0;
     const isUndone = !!undoMeta?.undone;
@@ -343,6 +346,51 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
 }
 
 
+
+function _scanForIgnoreArmor(value, seen = new Set()) {
+  try {
+    if (value == null) return false;
+    if (typeof value !== "object") return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+
+    if (value.ignoreArmor === true) return true;
+    if (value.options && typeof value.options === "object" && value.options.ignoreArmor === true) return true;
+
+    if (Array.isArray(value)) {
+      return value.some(v => _scanForIgnoreArmor(v, seen));
+    }
+
+    for (const v of Object.values(value)) {
+      if (_scanForIgnoreArmor(v, seen)) return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
+function _messageHasIgnoreArmorSource(message) {
+  try {
+    const msg = message?.id ? game.messages?.get?.(message.id) ?? message : message;
+    if (!msg) return false;
+
+    // Preferred source: structured Nimble message/system data.
+    if (_scanForIgnoreArmor(msg.system)) return true;
+    if (_scanForIgnoreArmor(msg.flags?.nimble)) return true;
+
+    // Fallback source: the originating Nimble item, resolved from message flags.
+    const itemUuid = msg.flags?.nimble?.itemUuid ?? msg.system?.itemUuid ?? null;
+    const itemId = msg.flags?.nimble?.itemId ?? msg.system?.itemId ?? null;
+    let item = itemUuid ? (fromUuidSync(itemUuid) ?? null) : null;
+    if (!item && itemId) {
+      const actorUuid = msg.flags?.nimble?.actorUuid ?? msg.system?.actorUuid ?? null;
+      const actorId = msg.flags?.nimble?.actorId ?? msg.speaker?.actor ?? null;
+      const actor = actorUuid ? (fromUuidSync(actorUuid) ?? null) : (actorId ? game.actors?.get?.(actorId) ?? null : null);
+      item = actor?.items?.get?.(itemId) ?? actor?.items?.find?.(i => String(i?.id ?? "") === String(itemId)) ?? null;
+    }
+    if (_scanForIgnoreArmor(item?.system)) return true;
+  } catch { /* ignore */ }
+  return false;
+}
 
 export function getMessageDamageContext(message) {
   try {
@@ -466,7 +514,7 @@ function _armorStateLabel(mode) {
   }
 }
 
-export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], baseContext = null, armorOverrideMode = "normal", resVulnMode = "normal", defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0, showVerificationCard = false } = {}) {
+export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], baseContext = null, armorOverrideMode = "normal", resVulnMode = "normal", defendMode = 0, extraDamage = null, miscFlatBonus = 0, miscDiceBonus = 0, automaticArmorBypass = false, showVerificationCard = false } = {}) {
   const liveMessage = message?.id ? game.messages?.get?.(message.id) ?? message : message;
   const tokens = (Array.isArray(tokenDocs) ? tokenDocs : []).filter(t => t?.actor && (t?.document?.uuid || t?.uuid));
   if (!tokens.length) {
@@ -572,6 +620,7 @@ export async function applyEnhancedChatCardDamage({ message, tokenDocs = [], bas
     await _postTargetedChatCard({
       entries,
       armorOverride: armorOverrideMode,
+      automaticArmorBypass: (!!automaticArmorBypass || !!base?.ignoreArmor) && String(armorOverrideMode) === "bypass",
       transformMode: defendAllowed ? "normal" : resVulnMode,
       defendMeta,
       undoMeta: undoSteps.length ? {
@@ -595,6 +644,7 @@ let _lastChatAutoFill = {
   armorMode: null,     // 0=unarmored,1=medium,2=heavy
   armorMixed: false,
   isCrit: false,
+  ignoreArmor: false,
   conditions: [],
   messageId: null,
   authorId: null,
@@ -1062,6 +1112,7 @@ function _computeAutoFillFromRollMessage(msg) {
         armorMode: null,
         armorMixed: false,
         isCrit,
+        ignoreArmor: _messageHasIgnoreArmorSource(msg),
         conditions,
         miscFlatBonus: misc,
         miscDiceBonus: miscDice,
@@ -1133,6 +1184,7 @@ function _computeAutoFillFromRollMessage(msg) {
       armorMode,
       armorMixed,
       isCrit,
+      ignoreArmor: _messageHasIgnoreArmorSource(msg),
       conditions,
       miscFlatBonus: misc,
       miscDiceBonus: miscDice,
@@ -1157,6 +1209,7 @@ function _refreshAutoFillCacheFromChat() {
       armorMode: null,
       armorMixed: false,
       isCrit: false,
+      ignoreArmor: false,
       conditions: [],
       messageId: null,
       authorId: null,
@@ -1219,6 +1272,7 @@ function _getAutoFillInfo() {
     diceOnly: (_lastChatAutoFill.diceOnly ?? 0),
     messageId: _lastChatAutoFill.messageId,
     isCrit: !!_lastChatAutoFill.isCrit,
+    ignoreArmor: !!_lastChatAutoFill.ignoreArmor,
     armorMode: (_lastChatAutoFill.armorMode ?? null),
     armorMixed: !!_lastChatAutoFill.armorMixed,
     conditions: Array.isArray(_lastChatAutoFill.conditions) ? _lastChatAutoFill.conditions : [],
@@ -1387,6 +1441,10 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
   // "reduced" = reduce armor one step (heavy->medium, medium->unarmored)
   // "bypass" = ignore armor
   _tgtArmorOverrideState = "normal";
+
+  // True only while a pulled Nimble source-level Ignore Armor roll is still
+  // using its automatic bypass default. Manual armor cycling clears this.
+  _tgtSourceIgnoreArmorActive = false;
 
   // Targeted Defend Mode (single PC target only)
   // 0 = None
@@ -1661,8 +1719,10 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
           this._setTargetArmorButtonVisual();
           this._applyArmorModeToTargetedInput();
         } else {
-          this._tgtArmorOverride = false;
-          this._tgtArmorOverrideState = "normal";
+          const sourceIgnoresArmor = !!this._tgtBaseRoll?.ignoreArmor;
+          this._tgtArmorOverride = sourceIgnoresArmor;
+          this._tgtArmorOverrideState = sourceIgnoresArmor ? "bypass" : "normal";
+          this._tgtSourceIgnoreArmorActive = sourceIgnoresArmor;
           // On an explicit "pull from chat" action, re-sync armor mode from the *current targets*
           // even if the user previously cycled the toggle. This prevents stale/manual states
           // from carrying forward unintentionally between different target sets.
@@ -1704,6 +1764,7 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
         baseRoll = (wasAuto && this._tgtBaseRoll) ? this._tgtBaseRoll : null;
         isCrit = !!(baseRoll?.isCrit);
       } catch { /* ignore */ }
+      const ignoreArmor = !!(baseRoll?.ignoreArmor) && !!this._tgtSourceIgnoreArmorActive;
 
       // Defend preview support (single targeted PC only)
       const singlePC = this._getSingleTargetedPC?.();
@@ -1728,14 +1789,14 @@ class FloatingHPApp extends HandlebarsApplicationMixin(ApplicationV2) {
             // Manual HUD values are applied exactly as entered. Armor math only applies
             // to values explicitly pulled from a chat card/roll context.
             const afterArmor = isRollDerived
-              ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit })
+              ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit: isCrit || ignoreArmor })
               : baseFull;
 
             // Transforms (mutually exclusive): Resistant applies after armor/crit;
             // Vulnerable bypasses armor when armor is actually in play, otherwise doubles damage.
             let v = afterArmor;
             if (mode === "resistant") v = Math.ceil(afterArmor / 2);
-            else if (mode === "vulnerable") v = (isRollDerived && armorMode > 0 && !isCrit) ? baseFull : (afterArmor * 2);
+            else if (mode === "vulnerable") v = (isRollDerived && armorMode > 0 && !isCrit && !ignoreArmor) ? baseFull : (afterArmor * 2);
 
             // Defend is a flat reduction after all other math (single-target PC only).
             if (singlePC?.actor && a?.id === singlePC.actor.id && Number.isFinite(defendPotential) && defendPotential > 0) {
@@ -2468,6 +2529,7 @@ Right-click to reset`;
     const baseMiscDice = getMonsterArmorRule() === "flat" ? 0 : (Number(base.miscDiceBonus ?? 0) || 0);
     const rawBaseDiceOnly = Number(base.diceOnly ?? 0) || 0;
     const isCrit = !!base.isCrit;
+    const ignoreArmor = !!base.ignoreArmor && !!this._tgtSourceIgnoreArmorActive;
 
     const extraDice = this._getTargetExtraDiceTotal?.() ?? 0;
 
@@ -2477,8 +2539,8 @@ Right-click to reset`;
     const tgtInfo = this._getTargetHeaderInfo();
     const onlyPCs = !!tgtInfo.onlyPCs;
 
-    // Crit bypasses armor.
-    if (isCrit) {
+    // Crit and source-level Ignore Armor bypass monster armor.
+    if (isCrit || ignoreArmor) {
       // Defend still applies on crit for the single-PC Defend use-case.
       if (singlePC?.actor) {
         const defCtx = this._getDefendContextForActor?.(singlePC.actor);
@@ -2564,12 +2626,14 @@ Right-click to reset`;
     if (baseType <= 0) {
       this._tgtArmorOverride = false;
       this._tgtArmorOverrideState = "normal";
+      this._tgtSourceIgnoreArmorActive = false;
       this._setTargetArmorButtonVisual();
       return;
     }
 
     // Manual interaction implies user intent to override default armor behavior.
     this._tgtArmorOverride = true;
+    this._tgtSourceIgnoreArmorActive = false;
 
     const current = String(this._tgtArmorOverrideState ?? "normal");
     if (baseType === 1) {
@@ -2789,9 +2853,27 @@ async _postExtraRollCard({ roll, attackerActor, label, formula }) {
     }
   }
 
+  _isCurrentTargetedBaseRollCrit() {
+    try {
+      if (this._tgtBaseRoll?.isCrit) return true;
+      const msgId = String(this._tgtBaseRoll?.messageId ?? this._tgtBaseMsgId ?? "");
+      const message = msgId ? game.messages?.get?.(msgId) : null;
+      if (message?.system?.isCritical) return true;
+      return !!getMessageDamageContext(message)?.isCrit;
+    } catch {
+      return false;
+    }
+  }
+
+  _filterTargetExtrasForCurrentRoll(extras) {
+    const list = Array.isArray(extras) ? extras : [];
+    const isCrit = this._isCurrentTargetedBaseRollCrit?.() ?? false;
+    return list.filter(ex => String(ex?.key || "") !== "sneak" || isCrit);
+  }
+
   async _openTargetExtrasDialog() {
     const attacker = this._getAttackerActorForExtras();
-    const extras = this._getAvailableTargetExtras(attacker);
+    const extras = this._filterTargetExtrasForCurrentRoll(this._getAvailableTargetExtras(attacker));
 
     const hasFury = extras.some(ex => ex && ex.key === "fury");
     const baseExtras = extras.filter(ex => ex && ex.key !== "fury");
@@ -3333,6 +3415,7 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
         if (!Number.isFinite(amt) || amt === 0) continue;
 
         const isCrit = !!(baseRoll?.isCrit);
+        const ignoreArmor = !!(baseRoll?.ignoreArmor) && !!this._tgtSourceIgnoreArmorActive;
         const isRollDerived = !!baseRoll;
         const miscDice = (isRollDerived && getMonsterArmorRule() !== "flat") ? (Number(baseRoll.miscDiceBonus ?? 0) || 0) : 0;
         const baseFull = isRollDerived ? (Number(baseRoll.full ?? 0) || 0) + (Number(baseRoll.miscFlatBonus ?? 0) || 0) + miscDice + extraDice : amt;
@@ -3343,7 +3426,7 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
         // Armor application. Manual HUD values must apply exactly as entered;
         // armor math only applies to chat-card-derived roll context.
         const afterArmor = isRollDerived
-          ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit })
+          ? applyMonsterArmorRule({ full: baseFull, diceOnly: baseDiceOnly, armorMode, isCrit: isCrit || ignoreArmor })
           : baseFull;
 
         // Transforms (mutually exclusive)
@@ -3353,7 +3436,7 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
         if (mode === "resistant") {
           appliedDelta = Math.ceil(afterArmor / 2);
         } else if (mode === "vulnerable") {
-          appliedDelta = (isRollDerived && armorMode > 0 && !isCrit) ? baseFull : (afterArmor * 2);
+          appliedDelta = (isRollDerived && armorMode > 0 && !isCrit && !ignoreArmor) ? baseFull : (afterArmor * 2);
         } else {
           appliedDelta = afterArmor;
         }
@@ -3425,6 +3508,7 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
       await _postTargetedChatCard({
         entries,
         armorOverride: this._tgtArmorOverride ? this._tgtArmorOverrideState : "normal",
+        automaticArmorBypass: !!baseRoll?.ignoreArmor && !!this._tgtSourceIgnoreArmorActive && this._tgtArmorOverride && this._tgtArmorOverrideState === "bypass",
         transformMode: mode,
         defendMeta,
         undoMeta: {
@@ -3442,6 +3526,7 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
     try { this._resetTargetExtras?.(); } catch { /* ignore */ }
     this._tgtBaseRoll = null;
     this._tgtBaseMsgId = null;
+    this._tgtSourceIgnoreArmorActive = false;
 
     // Defend defaults to none after an apply.
     try {
@@ -3485,9 +3570,10 @@ entries.push({ token: t, delta: appliedDelta, armorMode });
     try { this._resetTargetExtras?.(); } catch { /* ignore */ }
     this._tgtBaseRoll = null;
     this._tgtBaseMsgId = null;
+    this._tgtSourceIgnoreArmorActive = false;
     // Clear global autofill cache so inspectors don't immediately repopulate from the last roll.
     try { _autoFillClearTs = Date.now(); } catch { /* ignore */ }
-    try { _lastChatAutoFill = { ..._lastChatAutoFill, amount: null, full: null, diceOnly: null, armorMode: null, armorMixed: false, isCrit: false, conditions: [], messageId: null, authorId: null, speakerActorId: null, ts: 0 }; } catch { /* ignore */ }
+    try { _lastChatAutoFill = { ..._lastChatAutoFill, amount: null, full: null, diceOnly: null, armorMode: null, armorMixed: false, isCrit: false, ignoreArmor: false, conditions: [], messageId: null, authorId: null, speakerActorId: null, ts: 0 }; } catch { /* ignore */ }
 
     try { this._tgtArmorMode = 0; this._tgtArmorOverrideState = "normal"; this._setTargetArmorButtonVisual(); } catch { /* ignore */ }
     try { this._renderTargetedConditions(); } catch { /* ignore */ }
@@ -4127,6 +4213,12 @@ this.color = `rgba(${Math.round(r * darken)},${Math.round(g * darken)},${Math.ro
         // Prefer syncing armor mode from the *currently targeted* actors.
         // This keeps the HUD consistent even when the chat card doesn't expose armor hints.
         this._autoSetArmorModeFromTargets();
+        this._tgtSourceIgnoreArmorActive = false;
+        if (info.ignoreArmor) {
+          this._tgtArmorOverride = true;
+          this._tgtArmorOverrideState = "bypass";
+          this._tgtSourceIgnoreArmorActive = true;
+        }
         this._setTargetArmorButtonVisual();
 
         // Persist the pulled base roll context so armor toggles and extras can
@@ -4137,6 +4229,7 @@ this.color = `rgba(${Math.round(r * darken)},${Math.round(g * darken)},${Math.ro
           full: Number(info.full ?? info.amount ?? 0) || 0,
           diceOnly: Number(info.diceOnly ?? 0) || 0,
           isCrit: !!info.isCrit,
+          ignoreArmor: !!info.ignoreArmor,
           conditions: Array.isArray(info.conditions) ? info.conditions : [],
           miscFlatBonus: Number(info.miscFlatBonus ?? 0) || 0,
           miscDiceBonus: Number(info.miscDiceBonus ?? 0) || 0

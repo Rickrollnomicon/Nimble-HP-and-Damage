@@ -8,6 +8,11 @@ Designed for speed, clarity, and minimal friction at the table.
 
 ---
 
+## Documentation
+- docs\Nimble_HP_and_Damage_Manual.pdf
+
+---
+
 ## Features
 
 - Floating HP control panel for quick damage and healing

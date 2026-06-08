@@ -1,3 +1,17 @@
+## [3.1.4] - 2026-06-08
+
+### Added
+
+- Enhanced Chat Cards and the Floating HUD now recognize Nimble Core's source-level Ignore Armor setting on damage effects.
+- Damage from attacks with Ignore Armor enabled now starts with monster armor automatically bypassed, while still allowing manual armor override when needed.
+- Verification chat cards now report when armor was automatically bypassed by the attack source.
+
+### Changed
+
+- Sneak Attack now appears in Enhanced Chat Cards and the Floating HUD only when the originating attack is a critical hit.
+
+---
+
 ## [3.1.3] - 2026-05-30
 
 ### Added
