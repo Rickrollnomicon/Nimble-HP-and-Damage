@@ -1,6 +1,6 @@
 # Nimble HP and Damage
 
-A streamlined HP and damage control module for the **Nimble** system in Foundry VTT (v13).
+A streamlined HP and damage control module for the **Nimble** system in Foundry VTT (v14).
 
 This module provides a clean, fast in-play HP control panel and optional GM-routed damage handling for targeted NPCs.
 
@@ -17,7 +17,7 @@ Designed for speed, clarity, and minimal friction at the table.
 
 - Floating HP control panel for quick damage and healing
 - Apply HP changes to controlled tokens
-- Optional GM-routed damage application for targeted NPCs
+- Optional Player (GM-routed) damage application for targeted NPCs
 - Pull roll totals directly from chat
 - Designed specifically for the Nimble system
 - Clean interface consistent with Nimble styling
@@ -28,16 +28,16 @@ Designed for speed, clarity, and minimal friction at the table.
 
 ## Requirements
 
-- Foundry VTT v13
+- Foundry VTT v14
 - Nimble system
-- SocketLib (optional — used automatically if installed)
+- SocketLib (optional but recommended — used automatically if installed)
 
 ---
 
 ## Installation (GitHub Manifest)
 
 1. In Foundry, go to **Add-on Modules → Install Module**
-2. Paste this Manifest URL:
+2. Search "Nimble HP and Damage" OR Paste this Manifest URL:
 
 ```
 https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/module.json
@@ -63,8 +63,8 @@ https://raw.githubusercontent.com/Rickrollnomicon/Nimble-HP-and-Damage/main/modu
 The module includes configurable settings inside Foundry:
 
 - Allow players to apply damage directly to NPCs
-- Enable Enhanced Damage Chat Cards
-- Enable Floating Tracker
+- Enable Enhanced Chat Cards
+- Enable Floating HUD
 - Show Damage Verification Chat Card
 - Monster Armor Rule: Original / Just the Dice or Flat Reduction / Playtest
 - Cheat Vicious Opportunist support in Enhanced Chat Cards and Floating HUD Extra Damage Options
@@ -73,7 +73,7 @@ The module includes configurable settings inside Foundry:
 
 ## Version
 
-Current package baseline: **v3.1.3**
+Current package baseline: **v3.1.5**
 
 ---
 
@@ -83,4 +83,4 @@ MIT License
 
 
 ### Development notes
-- Enhanced Damage Chat Cards include a **Misc Flat Bonus** input for manually adding positive or negative flat damage not covered by current automation. The bonus is included in full damage totals but remains non-dice for Original / Just the Dice armor math.
+- Enhanced Chat Cards include a **Misc Flat Bonus** input for manually adding positive or negative flat damage not covered by current automation. The bonus is included in full damage totals but remains non-dice for Original / Just the Dice armor math.

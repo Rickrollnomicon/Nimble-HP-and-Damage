@@ -235,7 +235,7 @@ const targetName = foundry.utils.escapeHTML(tDoc?.name ?? actor.name ?? "Target"
 </div>`;
 
       await ChatMessage.create({
-        type: CONST.CHAT_MESSAGE_TYPES.OOC,
+        style: CONST.CHAT_MESSAGE_STYLES.OOC,
         user: game.user.id,
         speaker,
         content: String(content),

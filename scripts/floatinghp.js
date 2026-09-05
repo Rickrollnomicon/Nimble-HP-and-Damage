@@ -328,7 +328,7 @@ async function _postTargetedChatCard({ entries = [], verbOverride = null, armorO
 </div>`);
 
     await ChatMessage.create({
-      type: CONST.CHAT_MESSAGE_TYPES.OOC,
+      style: CONST.CHAT_MESSAGE_STYLES.OOC,
       user: game.user.id,
       speaker,
       content,
@@ -1282,7 +1282,7 @@ function _getAutoFillInfo() {
 }
 
 /**
- * Floating HP Tracker (Foundry v13, ApplicationV2)
+ * Floating HP Tracker (Foundry v14, ApplicationV2)
  *
  * What it does:
  * - Shows a compact floating window for adjusting HP on the currently controlled token(s).
@@ -3285,7 +3285,7 @@ html.find('[data-action="fury-keep"]').off("click").on("click", async (ev) => {
               this._tgtBaseRoll = { full: 0, diceOnly: 0, isCrit: false, miscFlatBonus: 0 };
             }
 
-            const roll = await (new Roll(ex.formula)).evaluate({ async: true });
+            const roll = await (new Roll(ex.formula)).evaluate();
             // Store as dice component
             this._tgtExtras = this._tgtExtras || {};
             this._tgtExtras[ex.key] = { total: Number(roll.total) || 0, formula: ex.formula, label: ex.label };
@@ -4370,7 +4370,7 @@ _sumNums(nums) { return (Array.isArray(nums) ? nums : []).reduce((a,b)=>a+(Numbe
 
 async _rollFuryDie(faces) {
   const roll = new Roll(`1d${faces}`);
-  await roll.evaluate({ async: true });
+  await roll.evaluate();
   return roll;
 }
 
@@ -4473,14 +4473,14 @@ Hooks.on("init", () => {
   // - Players: "User (Character)"
   // - GM: controlled token(s) when any are controlled
   // We store that label in flags and swap the visible header text at render time.
-  Hooks.on("renderChatMessage", (message, html) => {
+  Hooks.on("renderChatMessageHTML", (message, html) => {
   try {
     const f = message?.flags?.[MODULE_ID];
     if (f?.kind !== "targeted-hud-card" && f?.kind !== "extra-roll-card") return;
     const label = (f?.headerLabel ?? "").toString().trim();
     if (!label) return;
 
-    const root = html?.[0];
+    const root = html instanceof HTMLElement ? html : html?.[0];
     if (!root) return;
 
     const undoMeta = f?.undoMeta;
@@ -4552,7 +4552,7 @@ Hooks.on("init", () => {
   // - We only consider rolls authored by *this* user.
   // - We compute from rendered chat DOM (same trick as the Apply Damage macro),
   //   because message.content often doesn't include the visible formula/total.
-  Hooks.on("renderChatMessage", (message, html) => {
+  Hooks.on("renderChatMessageHTML", (message, html) => {
     try {
       if (!message?.rolls?.length) return;
       if (_getMessageAuthorId(message) !== game.user?.id) return;
@@ -4802,19 +4802,83 @@ Hooks.on("updateActor", (actor, data) => {
 Hooks.on("getSceneControlButtons", (controls) => {
   if (!FloatingHPApp.canLoad()) return;
 
-  const tokenControls = controls.tokens;
-  tokenControls.tools.fhptoggle = {
+  const getTools = (control) => {
+    const tools = control?.tools;
+    if (!tools) return [];
+    return Array.isArray(tools) ? tools : Object.values(tools);
+  };
+
+  const findTokenControls = () => {
+    // Foundry v14 stable: Record<string, SceneControl> (normally controls.tokens).
+    if (controls && !Array.isArray(controls) && typeof controls === "object") {
+      const direct = controls.tokens ?? controls.token;
+      if (direct) return direct;
+
+      const values = Object.values(controls);
+      return values.find((control) => {
+        const name = String(control?.name ?? "").trim().toLowerCase();
+        return name === "token" || name === "tokens";
+      }) ?? values.find((control) => getTools(control).some((entry) => {
+        const name = String(entry?.name ?? "").trim().toLowerCase();
+        const title = String(entry?.title ?? "").trim().toLowerCase();
+        return name.includes("unconstrained") || title.includes("unconstrained") || title.includes("movement");
+      }));
+    }
+
+    // Compatibility fallback for array-shaped controls used by some prerelease/system code.
+    if (Array.isArray(controls)) {
+      return controls.find((control) => {
+        const name = String(control?.name ?? "").trim().toLowerCase();
+        return name === "token" || name === "tokens";
+      }) ?? controls.find((control) => getTools(control).some((entry) => {
+        const name = String(entry?.name ?? "").trim().toLowerCase();
+        const title = String(entry?.title ?? "").trim().toLowerCase();
+        return name.includes("unconstrained") || title.includes("unconstrained") || title.includes("movement");
+      }));
+    }
+
+    return null;
+  };
+
+  const tokenControls = findTokenControls();
+  if (!tokenControls) return;
+
+  const tools = tokenControls.tools ?? (tokenControls.tools = {});
+  const existingTools = Array.isArray(tools) ? tools : Object.values(tools);
+  const unconstrained = existingTools.find((entry) => {
+    const name = String(entry?.name ?? "").trim().toLowerCase();
+    const title = String(entry?.title ?? "").trim().toLowerCase();
+    return name.includes("unconstrained") || title.includes("unconstrained") || title.includes("movement");
+  });
+  const numericOrders = existingTools.map((entry) => entry?.order).filter(Number.isFinite);
+  const order = Number.isFinite(unconstrained?.order)
+    ? unconstrained.order + 1
+    : (numericOrders.length ? Math.max(...numericOrders) + 1 : existingTools.length + 1);
+
+  const setFloatingHudVisibility = async (toggled) => {
+    if (!setting("enable-floating-tracker")) return;
+    await game.settings.set("nimble-hp-and-damage", "show-dialog", Boolean(toggled));
+    game.FloatingHP.toggleApp(Boolean(toggled));
+  };
+
+  const tool = {
     name: "fhptoggle",
     title: "Nimble HP HUD",
-    icon: "fas fa-heart-pulse",
+    icon: "fa-solid fa-heart-pulse",
+    order,
     toggle: true,
     active: setting("enable-floating-tracker") && setting("show-dialog"),
-    onClick: (toggled) => {
-      if (!setting("enable-floating-tracker")) return;
-      game.settings.set("nimble-hp-and-damage", "show-dialog", toggled);
-      game.FloatingHP.toggleApp(toggled);
-    }
+    visible: setting("enable-floating-tracker"),
+    onChange: (_event, toggled) => setFloatingHudVisibility(toggled)
   };
+
+  if (Array.isArray(tools)) {
+    const existingIndex = tools.findIndex((entry) => entry?.name === "fhptoggle");
+    if (existingIndex >= 0) tools[existingIndex] = { ...tools[existingIndex], ...tool };
+    else tools.push(tool);
+  } else {
+    tools.fhptoggle = { ...(tools.fhptoggle ?? {}), ...tool };
+  }
 });
 
 

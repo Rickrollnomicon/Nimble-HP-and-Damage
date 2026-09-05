@@ -1,3 +1,16 @@
+## [3.1.5] - 2026-09-05
+
+### Compatibility
+
+- Updated module compatibility for Foundry VTT v14 and Nimble v0.9.0.
+- Updated chat rendering hooks for Foundry v14.
+- Updated the Floating HUD Scene Control toggle for Foundry v14.
+- Removed obsolete asynchronous Roll.evaluate options.
+
+NOTE: Foundry VTT v13 compatibility no longer guaranteed - do not update until updating to v14
+
+---
+
 ## [3.1.4] - 2026-06-08
 
 ### Added

@@ -236,7 +236,7 @@ async function rollSimpleExtra(message, ctx, wrapper, extra) {
   const actor = state.sourceActor;
   if (!extra || !actor) return;
   try {
-    const roll = await (new Roll(extra.formula)).evaluate({ async: true });
+    const roll = await (new Roll(extra.formula)).evaluate();
     state.extraDamage[extra.key] = { total: Number(roll.total) || 0, diceOnly: Number(roll.total) || 0, formula: extra.formula, label: extra.label, level: extra.level };
     await postExtraRollCardStatic({ roll, attackerActor: actor, label: extra.label, formula: extra.formula });
     refreshWrapper(message, refreshLiveContext(message, ctx), wrapper);
@@ -1253,7 +1253,7 @@ function bindApply(message, ctx) {
   }, true);
 }
 
-Hooks.on("renderChatMessage", (message, html) => {
+Hooks.on("renderChatMessageHTML", (message, html) => {
   try {
     if (!game.settings.get(MODULE_ID, "enable-enhanced-chat-cards")) return;
     const ctx = detectContext(message, html);
